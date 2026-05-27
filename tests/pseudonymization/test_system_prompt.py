@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from noirdoc.pseudonymization.system_prompt import (
     PSEUDONYM_SYSTEM_INSTRUCTION,
     build_pseudonym_instruction,
@@ -81,8 +83,8 @@ def test_openai_responses_existing_instructions():
 # ── Unknown provider (no-op) ─────────────────────────────
 
 
-def test_unknown_provider_noop():
-    body = {"messages": []}
+def test_unknown_provider_noop() -> None:
+    body: dict[str, Any] = {"messages": []}
     result = inject_pseudonym_context(body, "unknown_provider")
     assert result == body
 

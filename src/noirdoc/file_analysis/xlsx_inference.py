@@ -14,10 +14,26 @@ from __future__ import annotations
 import asyncio
 import io
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Protocol
 
 import structlog
 
+if TYPE_CHECKING:
+    from noirdoc.detection.base import DetectedEntity
+    from noirdoc.pseudonymization.mapper import PseudonymMapper
+
 logger = structlog.get_logger()
+
+
+class _Detector(Protocol):
+    """Minimal detector interface used here: just async ``detect``.
+
+    Accepts both :class:`~noirdoc.detection.base.BaseDetector` subclasses and
+    the structurally-compatible :class:`~noirdoc.detection.ensemble.EnsembleDetector`.
+    """
+
+    async def detect(self, text: str, language: str = ...) -> list[DetectedEntity]: ...
+
 
 # Header keywords → entity type (substring match on normalized header)
 _HEADER_ENTITY_MAP: dict[str, str] = {
@@ -99,7 +115,7 @@ _HEADER_ENTITY_MAP: dict[str, str] = {
 }
 
 
-def infer_entity_type(header_value) -> str | None:
+def infer_entity_type(header_value: object) -> str | None:
     """Match a header cell value against the keyword map (substring match)."""
     if not isinstance(header_value, str) or not header_value.strip():
         return None
@@ -122,8 +138,8 @@ class XlsxResult:
 
 async def pseudonymize_xlsx_smart(
     data: bytes,
-    detector,
-    mapper,
+    detector: _Detector,
+    mapper: PseudonymMapper,
     language: str = "de",
     sample_rows: int = 5,
     pseudonymize: bool = True,
@@ -178,13 +194,13 @@ async def pseudonymize_xlsx_smart(
             if sample_cells:
                 sem = asyncio.Semaphore(8)
 
-                async def _detect(text: str):
+                async def _detect(text: str, sem: asyncio.Semaphore = sem) -> list[DetectedEntity]:
                     async with sem:
                         return await detector.detect(text, language)
 
                 det_results = await asyncio.gather(*[_detect(val) for _, val in sample_cells])
 
-                for (col_idx, _), entities in zip(sample_cells, det_results):
+                for (col_idx, _), entities in zip(sample_cells, det_results, strict=False):
                     if entities and col_types.get(col_idx) is None:
                         best = max(entities, key=lambda e: e.score)
                         col_types[col_idx] = best.entity_type

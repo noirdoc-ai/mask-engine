@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -35,8 +36,6 @@ def ensure_root_dir() -> Path:
     """Create the daemon root with 0o700 perms, idempotent."""
     d = root_dir()
     d.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(d, 0o700)
-    except OSError:
-        pass
     return d

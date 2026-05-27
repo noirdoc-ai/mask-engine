@@ -143,7 +143,7 @@ def _extract_openai_chat(body: dict[str, Any]) -> list[FileBlock]:
 
 
 def _decode_openai_chat_block(
-    part: dict,
+    part: dict[str, Any],
     block_type: str,
     msg_idx: int,
     part_idx: int,
@@ -205,7 +205,7 @@ def _apply_openai_chat(body: dict[str, Any], blocks: list[FileBlock]) -> None:
             content[part_idx] = {"type": "text", "text": block.pseudonymized_text}
 
 
-def _replace_base64_openai_chat(part: dict, block: FileBlock) -> None:
+def _replace_base64_openai_chat(part: dict[str, Any], block: FileBlock) -> None:
     """Replace base64 payload inside an OpenAI Chat file/image_url block."""
     new_bytes = reconstruct(block)
     if new_bytes is None:
@@ -257,7 +257,7 @@ def _extract_openai_responses(body: dict[str, Any]) -> list[FileBlock]:
     return blocks
 
 
-def _decode_responses_block(item: dict, block_type: str, path: str) -> FileBlock | None:
+def _decode_responses_block(item: dict[str, Any], block_type: str, path: str) -> FileBlock | None:
     if block_type == "input_image":
         url = item.get("image_url", "")
         if not url.startswith("data:"):
@@ -356,7 +356,7 @@ def _extract_anthropic(body: dict[str, Any]) -> list[FileBlock]:
     return blocks
 
 
-def _decode_anthropic_block(blk: dict, block_type: str, path: str) -> FileBlock | None:
+def _decode_anthropic_block(blk: dict[str, Any], block_type: str, path: str) -> FileBlock | None:
     source = blk.get("source")
     if not isinstance(source, dict):
         return None
@@ -420,7 +420,7 @@ def _parse_path(path: str) -> tuple[int, int] | None:
     return int(m1.group(2)), int(m2.group(2))
 
 
-def _navigate_to_ref(body: dict[str, Any], path: str) -> tuple[list, int] | None:
+def _navigate_to_ref(body: dict[str, Any], path: str) -> tuple[list[Any], int] | None:
     """Navigate a JSON path like ``input[0].content[1]`` and return (list, index)."""
     parts = path.split(".")
     current: Any = body
@@ -443,7 +443,9 @@ def _navigate_to_ref(body: dict[str, Any], path: str) -> tuple[list, int] | None
     return None
 
 
-def _navigate_to_ref_anthropic(body: dict[str, Any], block: FileBlock) -> tuple[list, int] | None:
+def _navigate_to_ref_anthropic(
+    body: dict[str, Any], block: FileBlock
+) -> tuple[list[Any], int] | None:
     """Navigate using source_path for Anthropic format."""
     path = block.source_path
     if path.startswith("system["):

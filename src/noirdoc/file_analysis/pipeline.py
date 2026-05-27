@@ -14,7 +14,7 @@ from noirdoc.file_analysis.body_walker import (
 )
 from noirdoc.file_analysis.extractor import FileTextExtractor
 from noirdoc.file_analysis.mime import PROVIDER_PASSABLE_MIMES
-from noirdoc.file_analysis.models import FileAnalysisMode, FileAnalysisResult
+from noirdoc.file_analysis.models import FileAnalysisMode, FileAnalysisResult, FileBlock
 from noirdoc.file_analysis.policy import FileAnalysisPolicy
 from noirdoc.pseudonymization.engine import PseudonymizationEngine
 from noirdoc.pseudonymization.mapper import PseudonymMapper
@@ -216,7 +216,7 @@ async def convert_unsupported_files(
 
     text_extractor = FileTextExtractor(ocr_enabled=ocr_enabled, max_pages=max_pages)
 
-    converted: list = []
+    converted: list[FileBlock] = []
     for block in unsupported:
         result.files_analyzed += 1
 

@@ -10,7 +10,7 @@ from noirdoc.namespace import Namespace, list_namespaces
 from noirdoc.pseudonymization.mapper import PseudonymMapper
 
 
-def test_create_namespace_generates_key(tmp_path: Path):
+def test_create_namespace_generates_key(tmp_path: Path) -> None:
     ns = Namespace("demo", root=tmp_path)
     assert not ns.exists()
 
@@ -27,7 +27,7 @@ def test_create_namespace_generates_key(tmp_path: Path):
     assert dir_mode == 0o700
 
 
-def test_existing_key_not_clobbered_on_concurrent_load(tmp_path: Path):
+def test_existing_key_not_clobbered_on_concurrent_load(tmp_path: Path) -> None:
     """A second `_ensure_key` must reuse the existing key, not overwrite it."""
     ns = Namespace("demo", root=tmp_path)
     key1 = ns._ensure_key()
@@ -39,7 +39,7 @@ def test_existing_key_not_clobbered_on_concurrent_load(tmp_path: Path):
     assert ns2._ensure_key() == key1
 
 
-def test_save_and_load_roundtrip(tmp_path: Path):
+def test_save_and_load_roundtrip(tmp_path: Path) -> None:
     ns = Namespace("demo", root=tmp_path)
     mapper = ns.load()
     mapper.get_or_create("John Smith", "PERSON")
@@ -52,7 +52,7 @@ def test_save_and_load_roundtrip(tmp_path: Path):
     assert restored.get_mapping_summary() == mapper.get_mapping_summary()
 
 
-def test_consistent_pseudonyms_across_sessions(tmp_path: Path):
+def test_consistent_pseudonyms_across_sessions(tmp_path: Path) -> None:
     ns1 = Namespace("demo", root=tmp_path)
     m1 = ns1.load()
     assert m1.get_or_create("John Smith", "PERSON") == "<<PERSON_1>>"
@@ -66,7 +66,7 @@ def test_consistent_pseudonyms_across_sessions(tmp_path: Path):
     assert m2.get_or_create("Jane Doe", "PERSON") == "<<PERSON_2>>"
 
 
-def test_delete_namespace(tmp_path: Path):
+def test_delete_namespace(tmp_path: Path) -> None:
     ns = Namespace("demo", root=tmp_path)
     mapper = ns.load()
     mapper.get_or_create("John Smith", "PERSON")
@@ -77,7 +77,7 @@ def test_delete_namespace(tmp_path: Path):
     assert not ns.exists()
 
 
-def test_list_namespaces(tmp_path: Path):
+def test_list_namespaces(tmp_path: Path) -> None:
     assert list_namespaces(root=tmp_path) == []
 
     Namespace("alpha", root=tmp_path).load()
@@ -115,13 +115,13 @@ def test_mapper_to_dict_roundtrip():
         "-leading-dash",
     ],
 )
-def test_namespace_rejects_unsafe_names(tmp_path: Path, bad_name: str):
+def test_namespace_rejects_unsafe_names(tmp_path: Path, bad_name: str) -> None:
     """Path-traversal / shell-metacharacter names must raise before any I/O."""
     with pytest.raises(ValueError, match="invalid namespace name"):
         Namespace(bad_name, root=tmp_path)
 
 
-def test_corrupt_key_raises(tmp_path: Path):
+def test_corrupt_key_raises(tmp_path: Path) -> None:
     ns = Namespace("demo", root=tmp_path)
     mapper = ns.load()
     mapper.get_or_create("John", "PERSON")

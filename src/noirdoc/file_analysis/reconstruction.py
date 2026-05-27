@@ -13,10 +13,24 @@ convert those blocks to text instead.
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
     from noirdoc.file_analysis.models import FileBlock
+
+
+class _BlockContainer(Protocol):
+    """Common interface of python-docx block containers (body, header, footer, cell)."""
+
+    @property
+    def paragraphs(self) -> list[Paragraph]: ...
+
+    @property
+    def tables(self) -> list[Table]: ...
+
 
 _RECONSTRUCTABLE_MIMES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -70,7 +84,7 @@ def _reconstruct_plain(block: FileBlock) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def _replace_in_block_container(container, replacements: dict[str, str]) -> None:
+def _replace_in_block_container(container: _BlockContainer, replacements: dict[str, str]) -> None:
     """Apply *replacements* to every paragraph in *container* and its tables."""
     for para in container.paragraphs:
         _replace_in_paragraph(para, replacements)
@@ -120,7 +134,7 @@ def _reconstruct_docx(block: FileBlock) -> bytes | None:
     return buf.getvalue()
 
 
-def _replace_in_paragraph(para, replacements: dict[str, str]) -> None:
+def _replace_in_paragraph(para: Paragraph, replacements: dict[str, str]) -> None:
     """Replace entity text across runs in a paragraph."""
     full_text = para.text
     for original, pseudo in replacements.items():

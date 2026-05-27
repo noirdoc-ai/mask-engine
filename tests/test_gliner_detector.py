@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pytest
 
 pytest.importorskip("gliner")
 
-from noirdoc.detection.gliner_detector import GlinerDetector  # noqa: E402
+from noirdoc.detection.base import DetectedEntity
+from noirdoc.detection.gliner_detector import GlinerDetector
 
 pytestmark = pytest.mark.slow
 
@@ -14,7 +17,7 @@ def detector() -> GlinerDetector:
     return GlinerDetector(model_name="knowledgator/gliner-pii-edge-v1.0")
 
 
-def _types(entities):
+def _types(entities: Iterable[DetectedEntity]) -> set[str]:
     return {e.entity_type for e in entities}
 
 

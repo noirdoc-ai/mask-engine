@@ -165,10 +165,13 @@ class EnsembleDetector:
         for candidate in sorted_ents:
             same_type_idx = None
             for i, existing in enumerate(accepted):
-                if candidate.start < existing.end and existing.start < candidate.end:
-                    if candidate.entity_type == existing.entity_type:
-                        same_type_idx = i
-                        break
+                if (
+                    candidate.start < existing.end
+                    and existing.start < candidate.end
+                    and candidate.entity_type == existing.entity_type
+                ):
+                    same_type_idx = i
+                    break
 
             if same_type_idx is None:
                 accepted.append(candidate)

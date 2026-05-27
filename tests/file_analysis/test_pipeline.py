@@ -16,7 +16,7 @@ def _b64_uri(content: bytes, mime: str = "text/plain") -> str:
     return f"data:{mime};base64,{base64.b64encode(content).decode()}"
 
 
-def _make_detector(entities: list[DetectedEntity] | None = None):
+def _make_detector(entities: list[DetectedEntity] | None = None) -> AsyncMock:
     mock = AsyncMock()
     mock.detect = AsyncMock(return_value=entities or [])
     return mock
@@ -50,7 +50,7 @@ async def test_passthrough_does_nothing():
     detector = _make_detector()
     mapper = PseudonymMapper()
 
-    result_body, result = await analyze_files_in_body(
+    _result_body, result = await analyze_files_in_body(
         body=body,
         stream_key="openai_chat",
         mode=FileAnalysisMode.PASSTHROUGH,
@@ -297,7 +297,7 @@ async def test_mapper_shared_between_text_and_file():
     entities = [_person_entity("John Doe", 10, 18)]
     detector = _make_detector(entities)
 
-    result_body, result = await analyze_files_in_body(
+    _result_body, _result = await analyze_files_in_body(
         body=body,
         stream_key="openai_chat",
         mode=FileAnalysisMode.PSEUDONYMIZE,

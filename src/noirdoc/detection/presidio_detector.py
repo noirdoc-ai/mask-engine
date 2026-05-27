@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import ClassVar
 
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -49,13 +50,22 @@ _PRESIDIO_ENTITIES = [
 class GermanPhoneRecognizer(PatternRecognizer):
     """Erkennt deutsche Telefonnummern in gängigen Formaten."""
 
-    PATTERNS = [
+    PATTERNS: ClassVar[list[Pattern]] = [
         Pattern("DE_PHONE_1", r"\+49[\s\-]?\d{2,4}[\s\-]?\d{3,8}(?:[\s\-]\d{1,5}){0,2}", 0.7),
         Pattern("DE_PHONE_2", r"0049[\s\-]?\d{2,4}[\s\-]?\d{3,8}(?:[\s\-]\d{1,5}){0,2}", 0.7),
         Pattern("DE_PHONE_3", r"0\d{2,4}[\s/\-]\d{3,8}(?:[\s/\-]\d{1,5}){0,2}", 0.6),
         Pattern("DE_PHONE_4", r"\(0\d{2,4}\)\s?\d{3,8}(?:[\s\-]\d{1,5}){0,2}", 0.7),
     ]
-    CONTEXT = ["telefon", "tel", "anrufen", "mobil", "handy", "fax", "phone", "call"]
+    CONTEXT: ClassVar[list[str]] = [
+        "telefon",
+        "tel",
+        "anrufen",
+        "mobil",
+        "handy",
+        "fax",
+        "phone",
+        "call",
+    ]
 
     def __init__(self) -> None:
         super().__init__(
@@ -69,13 +79,13 @@ class GermanPhoneRecognizer(PatternRecognizer):
 class GermanSVNRRecognizer(PatternRecognizer):
     """Erkennt deutsche Sozialversicherungsnummern (12 Zeichen: 2d+6d+1Buchstabe+3d)."""
 
-    PATTERNS = [
+    PATTERNS: ClassVar[list[Pattern]] = [
         # Spaced: "65 230785 M 014"
         Pattern("DE_SVNR_1", r"\d{2}\s\d{6}\s[A-Z]\s\d{3}", 0.6),
         # Compact: "65230785M014"
         Pattern("DE_SVNR_2", r"\d{2}\d{6}[A-Z]\d{3}", 0.4),
     ]
-    CONTEXT = [
+    CONTEXT: ClassVar[list[str]] = [
         "sozialversicherungsnummer",
         "svnr",
         "sv-nummer",
@@ -99,13 +109,13 @@ class GermanSVNRRecognizer(PatternRecognizer):
 class GermanSteuerIDRecognizer(PatternRecognizer):
     """Erkennt deutsche Steuerliche Identifikationsnummern (11 Ziffern, erste ≠ 0)."""
 
-    PATTERNS = [
+    PATTERNS: ClassVar[list[Pattern]] = [
         # Grouped 2+3+3+3: "14 815 037 682"
         Pattern("DE_STEUERID_1", r"[1-9]\d\s\d{3}\s\d{3}\s\d{3}", 0.5),
         # Compact: "14815037682"
         Pattern("DE_STEUERID_2", r"[1-9]\d{10}", 0.3),
     ]
-    CONTEXT = [
+    CONTEXT: ClassVar[list[str]] = [
         "steuer-id",
         "steuerid",
         "steueridentifikationsnummer",
@@ -129,7 +139,7 @@ class GermanSteuerIDRecognizer(PatternRecognizer):
 class InvertedNameRecognizer(PatternRecognizer):
     """Detects names in 'Lastname, Firstname' format (common in spreadsheets/databases)."""
 
-    PATTERNS = [
+    PATTERNS: ClassVar[list[Pattern]] = [
         # Lastname, Firstname (handles umlauts, hyphens)
         Pattern("INV_NAME_1", r"[A-ZÄÖÜ][a-zäöüß\-]+,\s+[A-ZÄÖÜ][a-zäöüß]+", 0.85),
         # Lastname, Title Firstname (Dr., Prof.)
@@ -145,7 +155,15 @@ class InvertedNameRecognizer(PatternRecognizer):
             0.90,
         ),
     ]
-    CONTEXT = ["name", "nachname", "vorname", "person", "mitarbeiter", "patient", "kunde"]
+    CONTEXT: ClassVar[list[str]] = [
+        "name",
+        "nachname",
+        "vorname",
+        "person",
+        "mitarbeiter",
+        "patient",
+        "kunde",
+    ]
 
     def __init__(self, supported_language: str = "de") -> None:
         super().__init__(

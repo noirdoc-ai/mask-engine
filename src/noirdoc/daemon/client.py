@@ -9,10 +9,11 @@ redaction so the user's command still succeeds.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from noirdoc import __version__
 from noirdoc.daemon import paths, spawn
@@ -96,7 +97,7 @@ async def _send_request(
     result = response.get("result")
     if result is None:
         raise DaemonError("response missing both 'result' and 'error'")
-    return result
+    return cast("dict[str, Any]", result)
 
 
 async def _wait_socket_gone(socket_path: Path, timeout: float) -> None:
@@ -146,10 +147,8 @@ async def call(method: str, params: dict[str, Any] | None = None) -> dict[str, A
                 # Ask the stale daemon to exit, wait for it to release the
                 # socket, then loop and let _spawn_and_connect bring up a
                 # fresh one at the current version.
-                try:
+                with contextlib.suppress(DaemonError):
                     await _send_request(reader, writer, "shutdown", {})
-                except DaemonError:
-                    pass
                 await _close(writer)
                 await _wait_socket_gone(socket_path, SHUTDOWN_DRAIN_TIMEOUT)
                 continue

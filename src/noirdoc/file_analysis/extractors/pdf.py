@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Protocol
+
 import structlog
 
 logger = structlog.get_logger()
@@ -10,7 +12,13 @@ logger = structlog.get_logger()
 _METADATA_KEYS = ("Title", "Author", "Subject", "Keywords", "Creator", "Producer")
 
 
-def _extract_pdf_metadata(pdf) -> str:
+class _PdfMetadataSource(Protocol):
+    """Subset of the pypdfium2 ``PdfDocument`` API used for metadata extraction."""
+
+    def get_metadata_value(self, key: str) -> str: ...
+
+
+def _extract_pdf_metadata(pdf: _PdfMetadataSource) -> str:
     """Return PDF Info-dict metadata as text so detectors can see embedded PII.
 
     PDF /Info entries (Author, Title, …) routinely carry the same names and

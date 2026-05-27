@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+import pytest
 from click.testing import CliRunner
 
 from noirdoc import cli as cli_module
 from noirdoc import sdk as sdk_module
 from noirdoc.cli import main
 from noirdoc.daemon import client as daemon_client
-from noirdoc.sdk import RedactionResult
+from noirdoc.sdk import RedactionResult, Redactor
 
 
-def _make_fake_redact_file(out_bytes: bytes = b"REDACTED"):
-    def _fake(self, input_path, *, output=None, language=None):
+def _make_fake_redact_file(
+    out_bytes: bytes = b"REDACTED",
+) -> Callable[..., RedactionResult]:
+    def _fake(
+        self: Redactor,
+        input_path: Path | str,
+        *,
+        output: Path | str | None = None,
+        language: str | None = None,
+    ) -> RedactionResult:
         return RedactionResult(
             input_path=Path(input_path),
             output_bytes=out_bytes,
@@ -27,10 +38,12 @@ def _make_fake_redact_file(out_bytes: bytes = b"REDACTED"):
     return _fake
 
 
-def test_cli_falls_back_when_daemon_unavailable(monkeypatch, tmp_path: Path):
+def test_cli_falls_back_when_daemon_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """call_sync raises DaemonUnavailable → CLI prints fallback warning and runs in-process."""
 
-    def fake_call_sync(method, params=None):
+    def fake_call_sync(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         raise daemon_client.DaemonUnavailable("simulated: daemon not running")
 
     # Stub the daemon RPC.
@@ -63,11 +76,13 @@ def test_cli_falls_back_when_daemon_unavailable(monkeypatch, tmp_path: Path):
     assert written[0].read_bytes() == b"REDACTED-LOCAL"
 
 
-def test_cli_skips_daemon_when_no_daemon_flag_set(monkeypatch, tmp_path: Path):
+def test_cli_skips_daemon_when_no_daemon_flag_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """--no-daemon must skip the daemon entirely (no DaemonUnavailable warning)."""
     call_count = {"n": 0}
 
-    def fake_call_sync(method, params=None):
+    def fake_call_sync(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         call_count["n"] += 1
         raise daemon_client.DaemonUnavailable("should not be called")
 
@@ -96,11 +111,11 @@ def test_cli_skips_daemon_when_no_daemon_flag_set(monkeypatch, tmp_path: Path):
     assert call_count["n"] == 0
 
 
-def test_cli_skips_daemon_when_env_var_set(monkeypatch, tmp_path: Path):
+def test_cli_skips_daemon_when_env_var_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """NOIRDOC_NO_DAEMON=1 also skips the daemon."""
     call_count = {"n": 0}
 
-    def fake_call_sync(method, params=None):
+    def fake_call_sync(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         call_count["n"] += 1
         raise daemon_client.DaemonUnavailable("should not be called")
 
@@ -130,7 +145,7 @@ def test_cli_skips_daemon_when_env_var_set(monkeypatch, tmp_path: Path):
     assert "daemon unavailable" not in result.output.lower()
 
 
-def test_cli_module_uses_daemon_imports(monkeypatch):
+def test_cli_module_uses_daemon_imports(monkeypatch: pytest.MonkeyPatch) -> None:
     """Smoke test: the cli module exposes the helper used by tests."""
     assert hasattr(cli_module, "_redact_via_daemon")
     assert hasattr(cli_module, "_redact_in_process")

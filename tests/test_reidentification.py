@@ -103,7 +103,7 @@ def test_reidentify_partial_all_resolved():
     mapper = _make_mapper()
     engine = ReidentificationEngine()
     text = "<<PERSON_1>> in <<LOCATION_1>>."
-    result, replaced, unresolved = engine.reidentify_partial(text, mapper)
+    _result, replaced, unresolved = engine.reidentify_partial(text, mapper)
     assert replaced == 2
     assert unresolved == 0
 

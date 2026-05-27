@@ -74,8 +74,9 @@ redis = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24.0",
-    "ruff>=0.15.0",
+    "ruff==0.15.14",
     "mypy>=1.19.1",
+    "pre-commit>=4.0",
     "fakeredis>=2.21.0",
 ]
 
@@ -116,11 +117,45 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "TID", "RUF"]
+ignore = [
+    "E501",    # line length is enforced by the formatter
+    "RUF002",  # en dashes etc. in docstrings are intentional prose punctuation
+    "RUF003",  # en dashes etc. in comments are intentional prose punctuation
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+"**/__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["noirdoc"]
 
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
 [tool.mypy]
 python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# Third-party libs without type stubs / py.typed marker.
+[[tool.mypy.overrides]]
+module = [
+    "openpyxl.*",
+    "gliner.*",
+    "flair.*",
+    "pytesseract.*",
+    "pypdfium2.*",
+]
 ignore_missing_imports = true

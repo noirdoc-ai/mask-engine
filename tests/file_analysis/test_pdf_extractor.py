@@ -73,7 +73,9 @@ def _make_image_pdf(text: str) -> bytes:
     img = Image.new("RGB", (1200, 1600), "white")
     draw = ImageDraw.Draw(img)
     try:
-        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.truetype(
+            "/System/Library/Fonts/Helvetica.ttc", 48
+        )
     except OSError:
         font = ImageFont.load_default()
     draw.text((60, 100), text, fill="black", font=font)
@@ -100,7 +102,9 @@ def _make_pdf_with_metadata(
     img = Image.new("RGB", (1200, 1600), "white")
     draw = ImageDraw.Draw(img)
     try:
-        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont = ImageFont.truetype(
+            "/System/Library/Fonts/Helvetica.ttc", 48
+        )
     except OSError:
         font = ImageFont.load_default()
     draw.text((60, 100), body_text, fill="black", font=font)

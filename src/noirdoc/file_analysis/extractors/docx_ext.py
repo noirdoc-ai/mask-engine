@@ -3,11 +3,26 @@
 from __future__ import annotations
 
 import io
+from typing import TYPE_CHECKING, Protocol
 
 from noirdoc.file_analysis.extractors._zip_safety import check_ooxml_zip_safe
 
+if TYPE_CHECKING:
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
 
-def _walk_block_container(container, parts: list[str]) -> None:
+
+class _BlockContainer(Protocol):
+    """Common interface of python-docx block containers (body, header, footer, cell)."""
+
+    @property
+    def paragraphs(self) -> list[Paragraph]: ...
+
+    @property
+    def tables(self) -> list[Table]: ...
+
+
+def _walk_block_container(container: _BlockContainer, parts: list[str]) -> None:
     """Append non-empty text from every paragraph and table cell in *container*.
 
     Used for the document body, headers, footers, and comments — all of

@@ -1,33 +1,35 @@
+# Managed by standards/template — run `uvx copier update` to sync.
 repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-    -   id: trailing-whitespace
-    -   id: end-of-file-fixer
-    -   id: check-yaml
-    -   id: debug-statements
-    -   id: name-tests-test
-        args: [--pytest-test-first]
--   repo: https://github.com/asottile/add-trailing-comma
-    rev: v4.0.0
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: debug-statements
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.14
     hooks:
-    -   id: add-trailing-comma
--   repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
     hooks:
-    -   id: pyupgrade
-        args: [--py312-plus]
--   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
+      - id: mypy
+        # Run via uv so mypy sees the project venv and all third-party type
+        # stubs / py.typed markers, instead of mirrors-mypy whose
+        # additional_dependencies drift from pyproject.toml.
+        name: mypy (strict)
+        entry: uv run mypy .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
     hooks:
-    -   id: mypy
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.2
-  hooks:
-    - id: ruff-check
-      args: [--fix]
-    - id: ruff-format
-- repo: https://github.com/gitleaks/gitleaks
-  rev: v8.30.1
-  hooks:
-    - id: gitleaks
+      - id: gitleaks

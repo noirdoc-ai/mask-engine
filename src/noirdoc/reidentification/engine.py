@@ -25,7 +25,7 @@ class ReidentificationEngine:
 
     def reidentify(self, text: str, mapper: PseudonymMapper) -> str:
         # Pass 1: strict match (standard pseudonym format)
-        def _replace_strict(match: re.Match) -> str:
+        def _replace_strict(match: re.Match[str]) -> str:
             pseudonym = match.group(0)
             original = mapper.reverse_lookup(pseudonym)
             if original is None:
@@ -48,7 +48,7 @@ class ReidentificationEngine:
 
         return result
 
-    def _replace_lenient(self, match: re.Match, mapper: PseudonymMapper) -> str:
+    def _replace_lenient(self, match: re.Match[str], mapper: PseudonymMapper) -> str:
         """Try to resolve a malformed pseudonym by normalizing to uppercase."""
         raw_token = match.group(1).upper()
         pseudonym = f"<<{raw_token}>>"
@@ -75,7 +75,7 @@ class ReidentificationEngine:
         replaced = 0
         unresolved = 0
 
-        def _replace_strict(match: re.Match) -> str:
+        def _replace_strict(match: re.Match[str]) -> str:
             nonlocal replaced, unresolved
             pseudonym = match.group(0)
             original = mapper.reverse_lookup(pseudonym)
@@ -90,7 +90,7 @@ class ReidentificationEngine:
         # Pass 2: lenient
         if mapper.entity_count > 0:
 
-            def _replace_lenient(match: re.Match) -> str:
+            def _replace_lenient(match: re.Match[str]) -> str:
                 nonlocal replaced, unresolved
                 raw_token = match.group(1).upper()
                 pseudonym = f"<<{raw_token}>>"

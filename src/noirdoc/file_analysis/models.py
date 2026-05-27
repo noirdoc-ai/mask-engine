@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from noirdoc.detection.base import DetectedEntity
 
 
-class FileAnalysisMode(str, enum.Enum):
+class FileAnalysisMode(enum.StrEnum):
     PASSTHROUGH = "passthrough"
     DETECT_ONLY = "detect_only"
     BLOCK = "block"

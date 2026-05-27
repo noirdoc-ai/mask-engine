@@ -14,11 +14,17 @@ from __future__ import annotations
 
 import io
 import re
+from typing import TYPE_CHECKING
 
 import structlog
 
 from noirdoc.mappings.hydration import hydrate_mapper
 from noirdoc.reidentification.engine import ReidentificationEngine
+
+if TYPE_CHECKING:
+    from docx.text.paragraph import Paragraph
+
+    from noirdoc.pseudonymization.mapper import PseudonymMapper
 
 logger = structlog.get_logger()
 
@@ -71,14 +77,18 @@ def reidentify_file_bytes(
     return None
 
 
-def _reidentify_text(file_bytes, engine, mapper) -> bytes:
+def _reidentify_text(
+    file_bytes: bytes, engine: ReidentificationEngine, mapper: PseudonymMapper
+) -> bytes:
     """Decode → reidentify → encode."""
     text = file_bytes.decode("utf-8", errors="replace")
     reidentified = engine.reidentify(text, mapper)
     return reidentified.encode("utf-8")
 
 
-def _reidentify_docx(file_bytes, engine, mapper) -> bytes | None:
+def _reidentify_docx(
+    file_bytes: bytes, engine: ReidentificationEngine, mapper: PseudonymMapper
+) -> bytes | None:
     """Walk DOCX paragraphs and table cells, reidentify text in runs."""
     from docx import Document
 
@@ -108,7 +118,9 @@ def _reidentify_docx(file_bytes, engine, mapper) -> bytes | None:
     return buf.getvalue()
 
 
-def _reidentify_paragraph(para, engine, mapper) -> bool:
+def _reidentify_paragraph(
+    para: Paragraph, engine: ReidentificationEngine, mapper: PseudonymMapper
+) -> bool:
     """Reidentify text in a paragraph's runs. Returns True if changed."""
     full_text = para.text
     if not _PSEUDO_PATTERN.search(full_text):
@@ -125,7 +137,9 @@ def _reidentify_paragraph(para, engine, mapper) -> bool:
     return True
 
 
-def _reidentify_xlsx(file_bytes, engine, mapper) -> bytes | None:
+def _reidentify_xlsx(
+    file_bytes: bytes, engine: ReidentificationEngine, mapper: PseudonymMapper
+) -> bytes | None:
     """Walk XLSX cells, reidentify string values."""
     from openpyxl import load_workbook
 

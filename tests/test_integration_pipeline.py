@@ -4,12 +4,12 @@ import pytest
 
 pytest.importorskip("gliner")
 
-from noirdoc.detection.ensemble import EnsembleDetector  # noqa: E402
-from noirdoc.detection.gliner_detector import GlinerDetector  # noqa: E402
-from noirdoc.detection.presidio_detector import PresidioDetector  # noqa: E402
-from noirdoc.pseudonymization.engine import PseudonymizationEngine  # noqa: E402
-from noirdoc.pseudonymization.mapper import PseudonymMapper  # noqa: E402
-from noirdoc.reidentification.engine import ReidentificationEngine  # noqa: E402
+from noirdoc.detection.ensemble import EnsembleDetector
+from noirdoc.detection.gliner_detector import GlinerDetector
+from noirdoc.detection.presidio_detector import PresidioDetector
+from noirdoc.pseudonymization.engine import PseudonymizationEngine
+from noirdoc.pseudonymization.mapper import PseudonymMapper
+from noirdoc.reidentification.engine import ReidentificationEngine
 
 pytestmark = pytest.mark.slow
 
