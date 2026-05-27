@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, ClassVar
+
 from presidio_analyzer import EntityRecognizer, RecognizerResult
+
+if TYPE_CHECKING:
+    from presidio_analyzer.nlp_engine import NlpArtifacts
 
 
 class FlairRecognizer(EntityRecognizer):
@@ -10,7 +15,7 @@ class FlairRecognizer(EntityRecognizer):
     Robuster bei Lowercase-Text als spaCy.
     """
 
-    PRESIDIO_EQUIVALENCES = {
+    PRESIDIO_EQUIVALENCES: ClassVar[dict[str, str]] = {
         "PER": "PERSON",
         "LOC": "LOCATION",
         "ORG": "ORGANIZATION",
@@ -26,7 +31,7 @@ class FlairRecognizer(EntityRecognizer):
             name="Flair NER",
         )
 
-    def _ensure_model(self):
+    def _ensure_model(self) -> None:
         if self._model is None:
             from flair.models import SequenceTagger
 
@@ -39,7 +44,7 @@ class FlairRecognizer(EntityRecognizer):
         self,
         text: str,
         entities: list[str] | None = None,
-        nlp_artifacts=None,
+        nlp_artifacts: NlpArtifacts | None = None,
     ) -> list[RecognizerResult]:
         if not text:
             return []

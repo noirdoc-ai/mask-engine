@@ -9,13 +9,14 @@ which silently dropped most entities on real spreadsheets.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
 pytestmark = pytest.mark.slow
 
 
-def _build_workbook(path):
+def _build_workbook(path: Path) -> None:
     from openpyxl import Workbook
 
     wb = Workbook()

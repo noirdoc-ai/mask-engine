@@ -9,6 +9,7 @@ to restore originals.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -64,10 +65,8 @@ class Namespace:
         # ``mode`` is honored only on creation; umask may have stripped
         # bits, so chmod explicitly afterward.
         self.path.mkdir(parents=True, mode=0o700, exist_ok=True)
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(self.path, 0o700)
-        except OSError:
-            pass
 
         key = Fernet.generate_key()
         # Atomically create the key file with mode 0600 and refuse to
@@ -117,14 +116,10 @@ class Namespace:
     def delete(self) -> None:
         """Remove the namespace directory and all its contents."""
         for f in (self.data_path, self.key_path):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 f.unlink()
-            except FileNotFoundError:
-                pass
-        try:
+        with contextlib.suppress(OSError):
             self.path.rmdir()
-        except OSError:
-            pass
 
 
 def list_namespaces(root: Path | str | None = None) -> list[str]:

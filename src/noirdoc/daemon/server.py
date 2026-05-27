@@ -9,6 +9,7 @@ cached, to avoid coherence issues with concurrent CLI processes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import logging.handlers
@@ -286,7 +287,7 @@ async def handle_redact(
                 namespace=parsed.namespace,
                 namespace_root=parsed.namespace_root,
                 language=parsed.language,
-                detector=parsed.detector,  # type: ignore[arg-type]
+                detector=parsed.detector,
                 score_threshold=parsed.score_threshold,
                 gliner_model=parsed.gliner_model,
             )
@@ -495,10 +496,10 @@ async def _async_main() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
+        # add_signal_handler is unsupported on Windows; we don't ship there
+        # but stay defensive.
+        with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, state.shutdown_event.set)
-        except NotImplementedError:
-            pass  # Windows; we don't ship there but be defensive.
 
     log.info("listening on %s", sock_path)
     try:
@@ -509,23 +510,17 @@ async def _async_main() -> None:
         idle_task.cancel()
         warmup_task.cancel()
         for task in (idle_task, warmup_task):
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
-            except (asyncio.CancelledError, Exception):
-                pass
-        try:
+        with contextlib.suppress(FileNotFoundError):
             sock_path.unlink()
-        except FileNotFoundError:
-            pass
         spawn.remove_pidfile()
         log.info("daemon stopped")
 
 
 def main() -> None:
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(_async_main())
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

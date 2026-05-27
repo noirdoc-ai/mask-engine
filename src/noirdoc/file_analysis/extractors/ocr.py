@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import warnings
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from PIL.Image import Image as PILImage
@@ -27,7 +27,7 @@ def ocr_image(img: PILImage, *, lang: str = "deu+eng") -> str:
         ratio = _MAX_DIM / max(img.size)
         img = img.resize((int(img.width * ratio), int(img.height * ratio)))
 
-    return pytesseract.image_to_string(img, lang=lang)
+    return cast(str, pytesseract.image_to_string(img, lang=lang))
 
 
 def extract_ocr(data: bytes, *, lang: str = "deu+eng") -> str:

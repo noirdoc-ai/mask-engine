@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from noirdoc.daemon.protocol import (
     MAX_PATH_LEN,
@@ -23,7 +24,7 @@ from noirdoc.daemon.protocol import (
 )
 
 
-def _roundtrip(model):
+def _roundtrip[M: BaseModel](model: M) -> M:
     data = model.model_dump()
     serialized = json.dumps(data)
     return type(model).model_validate(json.loads(serialized))
@@ -62,7 +63,7 @@ def test_redact_params_defaults():
 
 
 def test_redact_input_discriminator_rejects_unknown_type():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RedactParams.model_validate({"input": {"type": "garbage", "value": "x"}})
 
 
@@ -115,12 +116,12 @@ def test_response_envelope_with_error():
 def test_oversized_text_value_rejected():
     """Text inputs above MAX_TEXT_VALUE_LEN are refused to bound DoS."""
     too_big = "a" * (MAX_TEXT_VALUE_LEN + 1)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RedactTextInput(value=too_big)
 
 
 def test_oversized_path_rejected():
     """Paths above MAX_PATH_LEN are refused to bound DoS."""
     too_long = "/" + ("a" * MAX_PATH_LEN)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RedactFileInput(path=too_long)

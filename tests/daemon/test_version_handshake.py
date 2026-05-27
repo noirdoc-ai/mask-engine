@@ -8,19 +8,23 @@ the daemon and inspect the sequence of methods the client invokes. No real
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import tempfile
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from noirdoc.daemon import client as daemon_client
-from noirdoc.daemon import paths
+import noirdoc.daemon.client as daemon_client
+import noirdoc.daemon.paths as paths
+from noirdoc import __version__
 
 
 @pytest.fixture
-def isolated_paths(monkeypatch):
+def isolated_paths(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # AF_UNIX paths are limited to ~104 bytes on macOS, so pytest tmp_path
     # (which nests deeply) overflows. Use a short /tmp path instead.
     short_dir = Path(tempfile.gettempdir()) / f"nd-{uuid.uuid4().hex[:8]}"
@@ -29,33 +33,29 @@ def isolated_paths(monkeypatch):
     monkeypatch.setenv("NOIRDOC_DAEMON_SOCKET", str(short_dir / "d.sock"))
     yield short_dir
     for f in short_dir.glob("*"):
-        try:
+        with contextlib.suppress(OSError):
             f.unlink()
-        except OSError:
-            pass
-    try:
+    with contextlib.suppress(OSError):
         short_dir.rmdir()
-    except OSError:
-        pass
 
 
 class _FakeDaemon:
     """Minimal Unix-socket server scripted with daemon_version per-connection."""
 
-    def __init__(self, socket_path: Path, version: str):
+    def __init__(self, socket_path: Path, version: str) -> None:
         self.socket_path = socket_path
         self.version = version
-        self.received: list[dict] = []
+        self.received: list[dict[str, Any]] = []
         self.server: asyncio.AbstractServer | None = None
         self._stop_after_shutdown = False
 
-    async def start(self):
+    async def start(self) -> None:
         self.server = await asyncio.start_unix_server(
             self._handle,
             path=str(self.socket_path),
         )
 
-    async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             while True:
                 line = await reader.readline()
@@ -85,20 +85,18 @@ class _FakeDaemon:
             if self._stop_after_shutdown and self.server is not None:
                 self.server.close()
 
-    async def stop(self):
+    async def stop(self) -> None:
         if self.server is not None:
             self.server.close()
             await self.server.wait_closed()
-        try:
+        with contextlib.suppress(FileNotFoundError):
             self.socket_path.unlink()
-        except FileNotFoundError:
-            pass
 
 
 @pytest.mark.asyncio
-async def test_matching_version_passes_through(isolated_paths):
+async def test_matching_version_passes_through(isolated_paths: Path) -> None:
     sock = paths.socket_path()
-    daemon = _FakeDaemon(sock, version=daemon_client.__version__)
+    daemon = _FakeDaemon(sock, version=__version__)
     await daemon.start()
     try:
         result = await daemon_client.call("status", {})
@@ -111,9 +109,9 @@ async def test_matching_version_passes_through(isolated_paths):
 
 @pytest.mark.asyncio
 async def test_version_mismatch_triggers_shutdown_and_respawn(
-    isolated_paths,
-    monkeypatch,
-):
+    isolated_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """First connection (stale version) must receive ``shutdown``; the client
     then sees a fresh daemon brought up at the matching version."""
     sock = paths.socket_path()
@@ -124,10 +122,12 @@ async def test_version_mismatch_triggers_shutdown_and_respawn(
     # When the client calls _spawn_and_connect after the stale daemon dies,
     # we don't actually want to fork a real daemon. Patch it to bring up a
     # fresh fake at the matching version.
-    fresh: dict = {"daemon": None}
+    fresh: dict[str, _FakeDaemon | None] = {"daemon": None}
 
-    async def fake_spawn_and_connect(socket_path: Path):
-        fresh_d = _FakeDaemon(socket_path, version=daemon_client.__version__)
+    async def fake_spawn_and_connect(
+        socket_path: Path,
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        fresh_d = _FakeDaemon(socket_path, version=__version__)
         await fresh_d.start()
         fresh["daemon"] = fresh_d
         reader, writer = await asyncio.open_unix_connection(path=str(socket_path))

@@ -22,5 +22,9 @@ def ensure_spacy_models(languages: list[str]) -> None:
             logger.info("spacy.model_present", model=model_name)
             continue
         logger.info("spacy.model_downloading", model=model_name)
-        spacy.cli.download(model_name)
+        # spaCy exposes ``download`` at runtime but does not list it in
+        # ``spacy.cli.__all__``, so mypy reports attr-defined. Accessing it as an
+        # attribute (rather than a direct import) is also what the test suite
+        # patches, so we keep the attribute access and narrowly silence the check.
+        spacy.cli.download(model_name)  # type: ignore[attr-defined]
         logger.info("spacy.model_downloaded", model=model_name)

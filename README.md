@@ -149,6 +149,18 @@ The `encryption_key` must be identical across workers that need to read the same
 
 Don't want to run this yourself? **[Noirdoc Cloud](https://noirdoc.de)** is the hosted API wrapper: a privacy-preserving reverse proxy for LLM calls that uses this exact pipeline, plus multi-tenancy, audit, and provider key management. Compliance story: what's on GitHub is what the cloud runs.
 
+## Development
+
+This repo uses the shared noirdoc tooling standard (`uv` + ruff/mypy). Common tasks go through `make`:
+
+```bash
+make install   # set up the dev environment
+make check     # lint + format-check + typecheck + test — run before pushing
+make test      # run fast tests (excludes slow ML-model tests)
+```
+
+Run `make help` for the full list of targets (also: `make lint`, `make fmt`, `make typecheck`, `make test-slow`, `make models`).
+
 ## Contributing
 
 Bug reports, detectors, and format support are all welcome. See [CONTRIBUTING.md](https://github.com/nextaim-de/noirdoc/blob/main/CONTRIBUTING.md) for dev setup, tests, and the recognizer pattern.

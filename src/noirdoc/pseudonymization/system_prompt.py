@@ -54,9 +54,7 @@ def _inject_anthropic(body: dict[str, Any], instruction: str) -> dict[str, Any]:
     elif isinstance(system, str):
         body["system"] = instruction + "\n\n" + system
     elif isinstance(system, list):
-        body["system"] = [
-            {"type": "text", "text": instruction},
-        ] + system
+        body["system"] = [{"type": "text", "text": instruction}, *system]
     return body
 
 
@@ -64,7 +62,7 @@ def _inject_openai_chat(body: dict[str, Any], instruction: str) -> dict[str, Any
     """Prepend a system message to the messages array."""
     messages = body.get("messages", [])
     system_msg = {"role": "system", "content": instruction}
-    body["messages"] = [system_msg] + messages
+    body["messages"] = [system_msg, *messages]
     return body
 
 

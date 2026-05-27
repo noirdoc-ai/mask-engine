@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any, cast
 
 import structlog
 from cryptography.fernet import Fernet
@@ -58,7 +59,7 @@ class MappingStore:
             payload = {
                 "request_id": str(request_id),
                 "tenant_id": str(tenant_id),
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
                 "mappings": mapper.get_mapping_summary(),
             }
 
@@ -92,7 +93,7 @@ class MappingStore:
         try:
             plaintext = self._fernet.decrypt(encrypted)
             payload = json.loads(plaintext.decode("utf-8"))
-            return payload.get("mappings", {})
+            return cast("dict[str, str]", payload.get("mappings", {}))
         except Exception as e:
             logger.error(
                 "mapping.load_failed",
@@ -101,7 +102,7 @@ class MappingStore:
             )
             return None
 
-    async def load_full(self, request_id: uuid.UUID) -> dict | None:
+    async def load_full(self, request_id: uuid.UUID) -> dict[str, Any] | None:
         """Load full mapping payload including metadata. For admin/debug."""
         encrypted = await self._backend.get(self._key(request_id))
         if not encrypted:
@@ -109,7 +110,7 @@ class MappingStore:
 
         try:
             plaintext = self._fernet.decrypt(encrypted)
-            return json.loads(plaintext.decode("utf-8"))
+            return cast("dict[str, Any]", json.loads(plaintext.decode("utf-8")))
         except Exception as e:
             logger.error("mapping.load_full_failed", error=str(e))
             return None

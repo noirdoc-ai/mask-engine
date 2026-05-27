@@ -7,6 +7,7 @@ left behind by a crashed daemon are cleaned up before binding.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -47,10 +48,8 @@ def write_pidfile(pid: int) -> None:
 
 
 def remove_pidfile() -> None:
-    try:
+    with contextlib.suppress(FileNotFoundError):
         paths.pidfile_path().unlink()
-    except FileNotFoundError:
-        pass
 
 
 def cleanup_stale_socket() -> None:
@@ -66,10 +65,8 @@ def cleanup_stale_socket() -> None:
     pid = read_pidfile()
     if pid is not None and is_pid_alive(pid):
         return  # Live daemon owns the socket; do not touch.
-    try:
+    with contextlib.suppress(FileNotFoundError):
         sock.unlink()
-    except FileNotFoundError:
-        pass
     remove_pidfile()
 
 

@@ -1,3 +1,5 @@
+# Based on standards/template ci.yml; keeps mask-engine specifics (matrix +
+# spaCy model). Run `uvx copier update` to pull baseline changes.
 name: CI
 
 on:
@@ -14,15 +16,17 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint (pre-commit)
+    name: Lint (pre-commit + mypy)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - uses: pre-commit/action@v3.0.1
+      - run: uv sync --extra dev
+      - run: uv run pre-commit run --all-files
+      - run: uv run mypy .
 
   test:
     name: Tests (Python ${{ matrix.python-version }})
@@ -34,13 +38,11 @@ jobs:
         python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
-      - name: Install baseline + dev deps
-        run: pip install -e ".[dev]"
+      - run: uv sync --extra dev
       - name: Download spaCy model
-        run: python -m spacy download de_core_news_lg
+        run: uv run python -m spacy download de_core_news_lg
       - name: Run tests
-        run: pytest -m "not slow" --tb=short
+        run: uv run pytest -m "not slow" --tb=short

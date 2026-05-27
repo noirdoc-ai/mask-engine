@@ -11,13 +11,13 @@ from noirdoc.daemon import paths, spawn
 
 
 @pytest.fixture
-def isolated_root(monkeypatch, tmp_path: Path) -> Path:
+def isolated_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("NOIRDOC_DAEMON_ROOT", str(tmp_path))
     monkeypatch.delenv("NOIRDOC_DAEMON_SOCKET", raising=False)
     return tmp_path
 
 
-def test_pidfile_roundtrip(isolated_root: Path):
+def test_pidfile_roundtrip(isolated_root: Path) -> None:
     assert spawn.read_pidfile() is None
     spawn.write_pidfile(12345)
     assert spawn.read_pidfile() == 12345
@@ -25,7 +25,7 @@ def test_pidfile_roundtrip(isolated_root: Path):
     assert spawn.read_pidfile() is None
 
 
-def test_pidfile_invalid_content(isolated_root: Path):
+def test_pidfile_invalid_content(isolated_root: Path) -> None:
     paths.pidfile_path().write_text("not-an-int\n")
     assert spawn.read_pidfile() is None
 
@@ -39,7 +39,7 @@ def test_is_pid_alive_dead():
     assert spawn.is_pid_alive(0) is False
 
 
-def test_cleanup_stale_socket_removes_when_no_owner(isolated_root: Path):
+def test_cleanup_stale_socket_removes_when_no_owner(isolated_root: Path) -> None:
     sock = paths.socket_path()
     sock.parent.mkdir(parents=True, exist_ok=True)
     sock.write_bytes(b"")  # leftover from a crash
@@ -48,7 +48,7 @@ def test_cleanup_stale_socket_removes_when_no_owner(isolated_root: Path):
     assert not sock.exists()
 
 
-def test_cleanup_stale_socket_removes_when_pid_dead(isolated_root: Path):
+def test_cleanup_stale_socket_removes_when_pid_dead(isolated_root: Path) -> None:
     sock = paths.socket_path()
     sock.parent.mkdir(parents=True, exist_ok=True)
     sock.write_bytes(b"")
@@ -58,7 +58,7 @@ def test_cleanup_stale_socket_removes_when_pid_dead(isolated_root: Path):
     assert spawn.read_pidfile() is None
 
 
-def test_cleanup_stale_socket_preserves_when_owner_alive(isolated_root: Path):
+def test_cleanup_stale_socket_preserves_when_owner_alive(isolated_root: Path) -> None:
     sock = paths.socket_path()
     sock.parent.mkdir(parents=True, exist_ok=True)
     sock.write_bytes(b"")
@@ -67,5 +67,5 @@ def test_cleanup_stale_socket_preserves_when_owner_alive(isolated_root: Path):
     assert sock.exists()  # left alone
 
 
-def test_stop_daemon_when_not_running(isolated_root: Path):
+def test_stop_daemon_when_not_running(isolated_root: Path) -> None:
     assert spawn.stop_daemon(timeout_s=0.5) is True

@@ -14,7 +14,7 @@ Each message is a single JSON object terminated by ``\\n``.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -50,7 +50,7 @@ class RedactFileInput(BaseModel):
 
 
 RedactInput = Annotated[
-    Union[RedactTextInput, RedactFileInput],
+    RedactTextInput | RedactFileInput,
     Field(discriminator="type"),
 ]
 

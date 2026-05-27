@@ -59,7 +59,7 @@ def decode_base64_data_uri(data_uri: str) -> tuple[bytes, str]:
     try:
         _, b64_part = data_uri.split(",", 1)
     except ValueError:
-        raise ValueError("data URI missing comma separator")
+        raise ValueError("data URI missing comma separator") from None
 
     raw = base64.b64decode(b64_part)
     return raw, mime_type

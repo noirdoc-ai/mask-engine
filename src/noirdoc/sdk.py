@@ -110,7 +110,7 @@ class Redactor:
 
     # -- detection lifecycle ---------------------------------------------------
 
-    async def _ensure_detector(self):
+    async def _ensure_detector(self) -> EnsembleDetector:
         if self._ensemble is not None:
             return self._ensemble
 
@@ -394,7 +394,7 @@ def redact(
 def _detect_mime(path: Path, content: bytes) -> str:
     """Best-effort MIME detection — python-magic with extension fallback."""
     try:
-        import magic  # type: ignore[import-not-found]
+        import magic
 
         mime = magic.from_buffer(content, mime=True)
         if mime and mime != "application/octet-stream":

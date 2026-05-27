@@ -85,4 +85,4 @@ def _read_header(path: Path) -> int | None:
     if len(buf) < _HEADER.size:
         return None
     (expires_at,) = _HEADER.unpack(buf)
-    return expires_at
+    return int(expires_at)

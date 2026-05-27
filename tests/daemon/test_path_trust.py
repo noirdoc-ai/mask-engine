@@ -66,7 +66,7 @@ async def test_redact_rejects_output_parent_owned_by_another_uid(monkeypatch, tm
             )
         return st
 
-    monkeypatch.setattr(server.os, "stat", fake_stat)
+    monkeypatch.setattr(os, "stat", fake_stat)
 
     state = server.DaemonState()
     params = {

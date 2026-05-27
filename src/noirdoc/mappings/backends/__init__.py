@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type:
     if name == "RedisMappingBackend":
         from noirdoc.mappings.backends.redis_backend import RedisMappingBackend
 

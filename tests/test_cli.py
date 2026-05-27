@@ -13,14 +13,14 @@ from noirdoc.cli import main
 from noirdoc.namespace import Namespace
 
 
-def _redirect_namespace_root(monkeypatch, tmp_path: Path) -> Path:
+def _redirect_namespace_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     root = tmp_path / "namespaces"
     monkeypatch.setattr(ns_module, "DEFAULT_NAMESPACE_ROOT", root)
     monkeypatch.setattr(cli_module, "DEFAULT_NAMESPACE_ROOT", root)
     return root
 
 
-def test_ns_summary_happy_path(monkeypatch, tmp_path: Path):
+def test_ns_summary_happy_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _redirect_namespace_root(monkeypatch, tmp_path)
 
     ns = Namespace("demo")
@@ -42,7 +42,7 @@ def test_ns_summary_happy_path(monkeypatch, tmp_path: Path):
     assert "max@test.de" not in result.output
 
 
-def test_ns_summary_missing_namespace(monkeypatch, tmp_path: Path):
+def test_ns_summary_missing_namespace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _redirect_namespace_root(monkeypatch, tmp_path)
 
     result = CliRunner().invoke(main, ["ns", "summary", "nope"])
@@ -50,7 +50,7 @@ def test_ns_summary_missing_namespace(monkeypatch, tmp_path: Path):
     assert "Namespace 'nope' does not exist." in result.output
 
 
-def test_ns_show_requires_unsafe_flag(monkeypatch, tmp_path: Path):
+def test_ns_show_requires_unsafe_flag(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ns show must not print original values without --unsafe."""
     _redirect_namespace_root(monkeypatch, tmp_path)
 
@@ -65,7 +65,7 @@ def test_ns_show_requires_unsafe_flag(monkeypatch, tmp_path: Path):
     assert "--unsafe" in result.output
 
 
-def test_ns_show_unsafe_prints_mapping(monkeypatch, tmp_path: Path):
+def test_ns_show_unsafe_prints_mapping(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _redirect_namespace_root(monkeypatch, tmp_path)
 
     ns = Namespace("demo")
@@ -78,7 +78,7 @@ def test_ns_show_unsafe_prints_mapping(monkeypatch, tmp_path: Path):
     assert "Anna Müller" in result.output
 
 
-def test_choose_output_path_drops_input_directory_components(tmp_path: Path):
+def test_choose_output_path_drops_input_directory_components(tmp_path: Path) -> None:
     """Crafted input paths must not route output outside --output-dir."""
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -94,7 +94,9 @@ def test_choose_output_path_drops_input_directory_components(tmp_path: Path):
     assert chosen.is_relative_to(out_dir.resolve())
 
 
-def test_choose_output_path_refuses_namespace_store(monkeypatch, tmp_path: Path):
+def test_choose_output_path_refuses_namespace_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Refuse to overwrite anything inside the namespaces directory."""
     namespaces_root = tmp_path / "namespaces"
     namespaces_root.mkdir()

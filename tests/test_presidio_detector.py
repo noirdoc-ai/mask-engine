@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pytest
 
+from noirdoc.detection.base import DetectedEntity
 from noirdoc.detection.presidio_detector import PresidioDetector
 
 pytestmark = pytest.mark.slow
@@ -12,7 +15,7 @@ def detector() -> PresidioDetector:
     return PresidioDetector(languages=["de", "en"])
 
 
-def _types(entities):
+def _types(entities: Iterable[DetectedEntity]) -> set[str]:
     return {e.entity_type for e in entities}
 
 
