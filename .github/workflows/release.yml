@@ -45,10 +45,10 @@ jobs:
     needs: determine
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # hatch-vcs needs the full history to resolve the tag
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install build tooling
@@ -64,7 +64,7 @@ jobs:
           echo "Tag expects: $expected"
           echo "Wheel reports: $built"
           test "$expected" = "$built"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -82,7 +82,7 @@ jobs:
       attestations: write  # PEP 740 build provenance
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -100,8 +100,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -120,7 +120,7 @@ jobs:
             echo "Release $TAG — see CHANGELOG.md for details." > release-notes.md
           fi
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
