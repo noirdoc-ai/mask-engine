@@ -52,6 +52,13 @@ _PERSON_TRAILING_REJECT: set[str] = {
 # Pattern for username-like strings (lowercase + digits, no spaces)
 _USERNAME_PATTERN = re.compile(r"^[a-z0-9._@\-]+$")
 
+# "Lastname, Firstname" / "Lastname, Dr. Firstname" / "Doe-Roe, Firstname".
+# Mirrors the InvertedNameRecognizer patterns so their hits survive validation.
+_INVERTED_NAME_PATTERN = re.compile(
+    r"^[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?,\s+"
+    r"(?:(?:Dr|Prof)\.\s+)?[A-ZÄÖÜ][a-zäöüß]+$",
+)
+
 
 def _validate_person(entity: DetectedEntity) -> bool:
     """Return False if a PERSON entity is likely a false positive."""
@@ -60,8 +67,11 @@ def _validate_person(entity: DetectedEntity) -> bool:
 
     text = entity.text
 
-    # Reject entities containing commas or newlines (spaCy boundary absorption)
-    if "," in text or "\n" in text:
+    # Reject entities containing newlines or commas (spaCy boundary absorption),
+    # except the "Lastname, Firstname" form that InvertedNameRecognizer emits.
+    if "\n" in text:
+        return False
+    if "," in text and not _INVERTED_NAME_PATTERN.match(text):
         return False
 
     # Reject single-character entities
@@ -119,9 +129,11 @@ class EnsembleDetector:
             for e in all_entities
             if e.score >= _TYPE_THRESHOLDS.get(e.entity_type, self.score_threshold)
         ]
-        merged = self._merge_entities(filtered)
-        validated = [e for e in merged if _validate_person(e)]
-        return sorted(validated, key=lambda e: e.start)
+        # Validate before merging: a rejected PERSON span must not absorb the
+        # valid, shorter spans it overlaps (e.g. "Max Müller wohnhaft" vs "Max Müller").
+        validated = [e for e in filtered if _validate_person(e)]
+        merged = self._merge_entities(validated)
+        return sorted(merged, key=lambda e: e.start)
 
     @staticmethod
     async def _run_one(
@@ -150,37 +162,48 @@ class EnsembleDetector:
     def _merge_entities(self, entities: list[DetectedEntity]) -> list[DetectedEntity]:
         """
         Overlap Resolution:
-        1. Sort by start, then by span length descending (longer first)
-        2. For each entity, check overlap with already accepted entities
-        3. On overlap with SAME type: higher score wins; tie → longer span; tie → presidio wins
-        4. On overlap with DIFFERENT type: keep both (dual-type annotation)
-        5. No overlap: accept entity
+        1. Group entities into clusters of (transitively) overlapping spans.
+        2. Each cluster yields exactly one entity: the winner picks the type
+           (higher score → longer span → presidio), the span is the union of
+           the cluster so no detected character is left unmasked.
+        3. Non-overlapping entities pass through unchanged.
+
+        Overlaps must never survive this step regardless of type: the
+        pseudonymization engine replaces spans by offset, and two overlapping
+        spans corrupt each other (#34: an IBAN also tagged as LOCATION came
+        out as ``<<LOCATION_1>>AN_1>>``).
         """
         sorted_ents = sorted(
             entities,
             key=lambda e: (e.start, -(e.end - e.start)),
         )
 
-        accepted: list[DetectedEntity] = []
+        clusters: list[list[DetectedEntity]] = []
+        cluster_end = -1
         for candidate in sorted_ents:
-            same_type_idx = None
-            for i, existing in enumerate(accepted):
-                if (
-                    candidate.start < existing.end
-                    and existing.start < candidate.end
-                    and candidate.entity_type == existing.entity_type
-                ):
-                    same_type_idx = i
-                    break
-
-            if same_type_idx is None:
-                accepted.append(candidate)
+            if clusters and candidate.start < cluster_end:
+                clusters[-1].append(candidate)
+                cluster_end = max(cluster_end, candidate.end)
             else:
-                existing = accepted[same_type_idx]
-                winner = self._pick_winner(existing, candidate)
-                accepted[same_type_idx] = winner
+                clusters.append([candidate])
+                cluster_end = candidate.end
 
-        return accepted
+        return [self._resolve_cluster(cluster) for cluster in clusters]
+
+    @classmethod
+    def _resolve_cluster(cls, cluster: list[DetectedEntity]) -> DetectedEntity:
+        winner = cluster[0]
+        for other in cluster[1:]:
+            winner = cls._pick_winner(winner, other)
+
+        start = min(e.start for e in cluster)
+        end = max(e.end for e in cluster)
+        if winner.start == start and winner.end == end:
+            return winner
+
+        return winner.model_copy(
+            update={"start": start, "end": end, "text": _union_text(cluster, start, end)},
+        )
 
     @staticmethod
     def _pick_winner(a: DetectedEntity, b: DetectedEntity) -> DetectedEntity:
@@ -196,3 +219,14 @@ class EnsembleDetector:
         if b.source == "presidio":
             return b
         return a
+
+
+def _union_text(cluster: list[DetectedEntity], start: int, end: int) -> str:
+    """Rebuild the text of a merged span from the overlapping members' texts."""
+    chars: list[str | None] = [None] * (end - start)
+    for e in cluster:
+        if len(e.text) != e.end - e.start:
+            continue
+        for offset, char in enumerate(e.text):
+            chars[e.start - start + offset] = char
+    return "".join(c if c is not None else " " for c in chars)

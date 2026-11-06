@@ -232,8 +232,8 @@ async def test_person_wohnhaft_filtered():
 # --- Dual-type overlap ---
 
 
-async def test_overlap_different_types_both_kept():
-    """Overlapping entities with different types are both kept."""
+async def test_overlap_different_types_resolved_to_one():
+    """Overlapping entities with different types collapse into one (higher score wins)."""
     ent_a = _ent("PERSON", "Hoffmann", 0, 8, 0.85, "presidio")
     ent_b = _ent("ORGANIZATION", "Hoffmann", 0, 8, 0.80, "gliner")
     ensemble = EnsembleDetector(
@@ -241,9 +241,73 @@ async def test_overlap_different_types_both_kept():
         score_threshold=0.0,
     )
     result = await ensemble.detect("dummy", "de")
-    assert len(result) == 2
-    types = {e.entity_type for e in result}
-    assert types == {"PERSON", "ORGANIZATION"}
+    assert len(result) == 1
+    assert result[0].entity_type == "PERSON"
+
+
+async def test_iban_with_nested_location_is_one_entity():
+    """#34: a spaced IBAN also tagged as LOCATION ("DE89") must yield one IBAN span."""
+    text = "IBAN: DE89 3704 0044 0532 0130 00"
+    iban = _ent("IBAN", text[6:], 6, len(text), 1.0, "presidio")
+    loc = _ent("LOCATION", "DE89", 6, 10, 0.85, "gliner")
+    phone = _ent("PHONE", text[16:], 16, len(text), 0.6, "presidio")
+    ensemble = EnsembleDetector(
+        [FakeDetector([iban, phone]), FakeDetector([loc])],
+        score_threshold=0.0,
+    )
+    result = await ensemble.detect(text, "de")
+    assert len(result) == 1
+    assert result[0].entity_type == "IBAN"
+    assert (result[0].start, result[0].end) == (6, len(text))
+
+
+async def test_partial_overlap_different_types_covers_union():
+    """Partially overlapping spans merge into one span covering both, so nothing leaks."""
+    text = "Max Müller GmbH Berlin"
+    person = _ent("PERSON", "Max Müller", 0, 10, 0.9, "presidio")
+    org = _ent("ORGANIZATION", "Müller GmbH", 4, 15, 0.8, "gliner")
+    ensemble = EnsembleDetector(
+        [FakeDetector([person]), FakeDetector([org])],
+        score_threshold=0.0,
+    )
+    result = await ensemble.detect(text, "de")
+    assert len(result) == 1
+    assert result[0].entity_type == "PERSON"
+    assert (result[0].start, result[0].end) == (0, 15)
+    assert result[0].text == "Max Müller GmbH"
+
+
+async def test_rejected_person_does_not_absorb_valid_person():
+    """Validation runs before merging: a rejected longer span must not swallow a valid one."""
+    bad = _ent("PERSON", "Max Müller wohnhaft", 0, 19, 0.85, "presidio")
+    good = _ent("PERSON", "Max Müller", 0, 10, 0.80, "gliner")
+    ensemble = EnsembleDetector(
+        [FakeDetector([bad]), FakeDetector([good])],
+        score_threshold=0.0,
+    )
+    result = await ensemble.detect("Max Müller wohnhaft in Berlin", "de")
+    assert len(result) == 1
+    assert result[0].text == "Max Müller"
+
+
+async def test_inverted_name_kept():
+    """'Lastname, Firstname' hits from InvertedNameRecognizer survive validation."""
+    for name in ("Müller, Hans", "Müller, Dr. Hans", "Schmidt-Weber, Anna"):
+        ent = _ent("PERSON", name, 0, len(name), 0.9, "presidio")
+        ensemble = EnsembleDetector([FakeDetector([ent])], score_threshold=0.0)
+        result = await ensemble.detect(name, "de")
+        assert len(result) == 1, name
+
+
+async def test_inverted_name_wins_over_parts():
+    """The inverted form is not dropped in favour of nothing (it used to merge, then fail)."""
+    full = _ent("PERSON", "Müller, Hans", 0, 12, 0.85, "presidio")
+    last = _ent("PERSON", "Müller", 0, 6, 0.85, "presidio")
+    first = _ent("PERSON", "Hans", 8, 12, 0.85, "presidio")
+    ensemble = EnsembleDetector([FakeDetector([full, last, first])], score_threshold=0.0)
+    result = await ensemble.detect("Müller, Hans", "de")
+    assert len(result) == 1
+    assert (result[0].start, result[0].end) == (0, 12)
 
 
 async def test_overlap_same_type_still_picks_winner():

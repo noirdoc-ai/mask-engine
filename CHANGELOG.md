@@ -5,6 +5,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Overlapping detections of different types no longer corrupt the output: the
+  ensemble resolves every overlap to one span, and the pseudonymization engine
+  merges any remaining overlaps before replacing (#34).
+- PERSON validation runs before overlap resolution, so a rejected span no longer
+  swallows the valid name it overlaps, and "Lastname, Firstname" hits are kept.
+
 ## [0.2.0] — 2026-09-04
 
 Security release, and the first one to change behaviour on purpose. Redaction
