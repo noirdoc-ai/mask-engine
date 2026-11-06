@@ -75,6 +75,7 @@ async def analyze_files_in_body(
                 size=len(block.content_bytes),
                 limit=max_file_size_bytes,
             )
+            _fail_closed(policy, result)
             continue
 
         # XLSX fast path: column-inference analysis/pseudonymization
@@ -133,7 +134,10 @@ async def analyze_files_in_body(
         # 2. Extract text
         text = await text_extractor.extract_text(block)
         if text is None:
+            # Never analysed (unsupported type, corrupt/encrypted file, image
+            # without OCR): the original bytes would reach the provider as-is.
             result.files_extraction_errors += 1
+            _fail_closed(policy, result)
             continue
         block.extracted_text = text
 
@@ -357,3 +361,14 @@ async def convert_unsupported_files(
     )
 
     return body, result
+
+
+def _fail_closed(policy: FileAnalysisPolicy, result: FileAnalysisResult) -> None:
+    """Block a file that could not be analysed in modes that promise masking.
+
+    Mirrors the XLSX/DOCX load-failure branches (#13): detect-only never
+    modifies the body, so it only counts the error.
+    """
+    if policy.should_pseudonymize() or policy.should_block_on_pii():
+        result.files_blocked += 1
+        result.blocked = True

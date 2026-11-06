@@ -5,6 +5,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Files that cannot be analysed — over the size limit, unsupported, corrupt or
+  encrypted, or images while OCR is off — now block the request in
+  `pseudonymize` and `block` mode instead of reaching the provider unmodified,
+  matching the XLSX/DOCX load-failure behaviour from 0.2.0.
+
 ## [0.2.0] — 2026-09-04
 
 Security release, and the first one to change behaviour on purpose. Redaction

@@ -6,6 +6,8 @@ import base64
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
+
 from noirdoc.detection.base import DetectedEntity
 from noirdoc.file_analysis.models import FileAnalysisMode
 from noirdoc.file_analysis.pipeline import analyze_files_in_body
@@ -233,8 +235,11 @@ async def test_pseudonymize_pdf_converts_to_text():
         pseudo_engine=PseudonymizationEngine(),
         mapper=mapper,
     )
-    # Fake PDF bytes will cause extraction error
+    # Fake PDF bytes will cause extraction error, and the unreadable original
+    # must not be forwarded in pseudonymize mode.
     assert result.files_extraction_errors == 1
+    assert result.blocked is True
+    assert result.files_blocked == 1
 
 
 # ── XLSX fail-closed (issue #13) ─────────────────────────────
@@ -526,6 +531,69 @@ async def test_file_exceeds_size_limit():
         max_file_size_bytes=500,
     )
     assert result.files_extraction_errors == 1
+    assert result.blocked is False  # detect-only never modifies or blocks
+
+
+def _oversized_text_body() -> dict[str, Any]:
+    return {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "file",
+                        "file": {"file_data": _b64_uri(b"Max Mustermann " * 100, "text/plain")},
+                    },
+                ],
+            },
+        ],
+    }
+
+
+@pytest.mark.parametrize("mode", [FileAnalysisMode.PSEUDONYMIZE, FileAnalysisMode.BLOCK])
+async def test_file_exceeds_size_limit_fails_closed(mode: FileAnalysisMode):
+    """An oversized file is never analysed, so it must not reach the provider unmasked."""
+    detector = _make_detector()
+    _, result = await analyze_files_in_body(
+        body=_oversized_text_body(),
+        stream_key="openai_chat",
+        mode=mode,
+        detector=detector,
+        pseudo_engine=PseudonymizationEngine(),
+        mapper=PseudonymMapper(),
+        max_file_size_bytes=500,
+    )
+    assert result.files_extraction_errors == 1
+    assert result.blocked is True
+    assert result.files_blocked == 1
+    detector.detect.assert_not_called()
+
+
+async def test_extraction_failure_detect_only_does_not_block():
+    """Detect-only keeps counting extraction errors without blocking."""
+    body = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "file",
+                        "file": {"file_data": _b64_uri(b"not a pdf", "application/pdf")},
+                    },
+                ],
+            },
+        ],
+    }
+    _, result = await analyze_files_in_body(
+        body=body,
+        stream_key="openai_chat",
+        mode=FileAnalysisMode.DETECT_ONLY,
+        detector=_make_detector(),
+        pseudo_engine=PseudonymizationEngine(),
+        mapper=PseudonymMapper(),
+    )
+    assert result.files_extraction_errors == 1
+    assert result.blocked is False
 
 
 # ── Mapper consistency ───────────────────────────────────────
