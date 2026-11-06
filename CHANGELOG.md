@@ -5,6 +5,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `EnsembleDetector` raises `DetectionError` when every detector fails, instead
+  of returning no entities and letting the text pass through unmasked (for
+  example `language="en"` on a German-only Presidio setup).
+
+### Added
+
+- `EnsembleDetector(fail_closed=True)` raises on any detector failure, for
+  callers that must not forward partially masked text.
+
 ## [0.2.0] — 2026-09-04
 
 Security release, and the first one to change behaviour on purpose. Redaction

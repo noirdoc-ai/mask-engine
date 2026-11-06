@@ -5,7 +5,7 @@ import re
 
 import structlog
 
-from noirdoc.detection.base import BaseDetector, DetectedEntity
+from noirdoc.detection.base import BaseDetector, DetectedEntity, DetectionError
 
 log = structlog.get_logger(__name__)
 
@@ -98,9 +98,20 @@ class EnsembleDetector:
         self,
         detectors: list[BaseDetector],
         score_threshold: float = 0.5,
+        fail_closed: bool = False,
     ) -> None:
+        """
+        ``fail_closed=False`` (default): a failing detector is logged and the
+        others carry on; only when *every* detector fails is
+        :class:`DetectionError` raised, because the text would otherwise pass
+        through completely unmasked.
+
+        ``fail_closed=True``: any detector failure raises. Use this where a
+        partially masked text must not leave the process (e.g. a gateway).
+        """
         self.detectors = detectors
         self.score_threshold = score_threshold
+        self.fail_closed = fail_closed
 
     async def detect(self, text: str, language: str = "de") -> list[DetectedEntity]:
         if not text:
@@ -110,9 +121,19 @@ class EnsembleDetector:
             *(self._run_one(d, text, language) for d in self.detectors),
         )
 
+        failed = [
+            name for name, result in zip(self._names(), results, strict=True) if result is None
+        ]
+        if failed and (self.fail_closed or len(failed) == len(self.detectors)):
+            detail = ", ".join(failed)
+            raise DetectionError(
+                f"PII detection failed for language={language!r} (detectors: {detail})",
+            )
+
         all_entities: list[DetectedEntity] = []
         for result in results:
-            all_entities.extend(result)
+            if result is not None:
+                all_entities.extend(result)
 
         filtered = [
             e
@@ -123,29 +144,32 @@ class EnsembleDetector:
         validated = [e for e in merged if _validate_person(e)]
         return sorted(validated, key=lambda e: e.start)
 
+    def _names(self) -> list[str]:
+        return [_detector_name(d) for d in self.detectors]
+
     @staticmethod
     async def _run_one(
         detector: BaseDetector,
         text: str,
         language: str,
-    ) -> list[DetectedEntity]:
-        """Run one detector. On failure, log and degrade to empty results.
+    ) -> list[DetectedEntity] | None:
+        """Run one detector. On failure, log and return ``None``.
 
         A silent ``return_exceptions=True`` would bury detector failures
         and cause silent leakage (e.g. PERSON detection going dark on a
         spaCy load error). We log explicitly so operators can spot the
-        degraded state.
+        degraded state, and ``detect`` decides whether to carry on.
         """
         try:
             return await detector.detect(text, language)
         except Exception as exc:
             log.warning(
                 "detection.detector_failed",
-                detector=getattr(detector, "name", detector.__class__.__name__),
+                detector=_detector_name(detector),
                 language=language,
                 error=str(exc),
             )
-            return []
+            return None
 
     def _merge_entities(self, entities: list[DetectedEntity]) -> list[DetectedEntity]:
         """
@@ -196,3 +220,10 @@ class EnsembleDetector:
         if b.source == "presidio":
             return b
         return a
+
+
+def _detector_name(detector: BaseDetector) -> str:
+    try:
+        return detector.name
+    except Exception:
+        return detector.__class__.__name__

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from noirdoc.detection.base import BaseDetector, DetectedEntity
+import pytest
+
+from noirdoc.detection.base import BaseDetector, DetectedEntity, DetectionError
 from noirdoc.detection.ensemble import EnsembleDetector
 
 # --- Helpers ---
@@ -176,6 +178,36 @@ async def test_failing_detector_logs_warning(capsys):
     await ensemble.detect("dummy", "de")
     captured = capsys.readouterr().out + capsys.readouterr().err
     assert "detection.detector_failed" in captured
+
+
+async def test_all_detectors_failing_raises():
+    """If every detector fails, the text must not pass through unmasked."""
+    ensemble = EnsembleDetector([FailingDetector()], score_threshold=0.0)
+    with pytest.raises(DetectionError, match="failing"):
+        await ensemble.detect("Max Müller, max@example.com", "de")
+
+
+async def test_all_of_several_detectors_failing_raises():
+    ensemble = EnsembleDetector([FailingDetector(), FailingDetector()], score_threshold=0.0)
+    with pytest.raises(DetectionError):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_fail_closed_raises_on_any_failure():
+    """fail_closed=True: one failing detector is enough to refuse the text."""
+    ent = _ent("PERSON", "Max", 0, 3, 0.9, "presidio")
+    ensemble = EnsembleDetector(
+        [FailingDetector(), FakeDetector([ent])],
+        score_threshold=0.0,
+        fail_closed=True,
+    )
+    with pytest.raises(DetectionError):
+        await ensemble.detect("Max", "de")
+
+
+async def test_empty_text_does_not_run_or_raise():
+    ensemble = EnsembleDetector([FailingDetector()], fail_closed=True)
+    assert await ensemble.detect("", "de") == []
 
 
 # --- PERSON validation ---

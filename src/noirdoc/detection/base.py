@@ -22,6 +22,10 @@ ENTITY_TYPES = {
 }
 
 
+class DetectionError(RuntimeError):
+    """Raised when PII detection could not run, so the text must not be passed on."""
+
+
 class DetectedEntity(BaseModel):
     """Eine erkannte PII-Entität mit Position im Text."""
 
