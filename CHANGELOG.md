@@ -5,6 +5,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- CI: new `Slow tests` workflow runs the model-loading (`-m slow`) and OCR
+  tests with the `full` extra and Tesseract — weekly, on demand, and on PRs
+  touching detection or (re)identification. Releases now require the fast and
+  slow test tiers to pass before building and publishing.
+
 ## [0.2.0] — 2026-09-04
 
 Security release, and the first one to change behaviour on purpose. Redaction
