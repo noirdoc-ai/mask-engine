@@ -62,7 +62,7 @@ class GlinerDetector(BaseDetector):
             self._model.predict_entities,
             text,
             _LABELS,
-            threshold=0.65,
+            threshold=0.6,
         )
 
         entities: list[DetectedEntity] = []

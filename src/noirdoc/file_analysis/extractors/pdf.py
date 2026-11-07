@@ -99,12 +99,9 @@ def extract_pdf_with_ocr_fallback(
             textpage.close()
 
             if len(text.strip()) < min_chars_per_page:
-                try:
-                    w, h = page.get_size()
-                    max_side = max(float(w), float(h), 1.0)
-                    effective_scale = min(float(render_scale), _MAX_DIM / max_side)
-                except Exception:
-                    effective_scale = float(render_scale)
+                w, h = page.get_size()
+                max_side = max(float(w), float(h), 1.0)
+                effective_scale = min(float(render_scale), _MAX_DIM / max_side)
                 pil = page.render(scale=effective_scale).to_pil()
                 text = ocr_image(pil, lang=ocr_lang)
                 ocr_triggered += 1
