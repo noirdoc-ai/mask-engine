@@ -33,6 +33,10 @@ class DetectedEntity(BaseModel):
     source: str
 
 
+class DetectionError(RuntimeError):
+    """Raised when PII detection cannot complete safely."""
+
+
 class BaseDetector(ABC):
     """Interface das jeder Detektor implementieren muss."""
 

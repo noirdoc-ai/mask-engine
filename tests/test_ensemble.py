@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from noirdoc.detection.base import BaseDetector, DetectedEntity
+import pytest
+
+from noirdoc.detection.base import BaseDetector, DetectedEntity, DetectionError
 from noirdoc.detection.ensemble import EnsembleDetector
 
 # --- Helpers ---
@@ -176,6 +178,76 @@ async def test_failing_detector_logs_warning(capsys):
     await ensemble.detect("dummy", "de")
     captured = capsys.readouterr().out + capsys.readouterr().err
     assert "detection.detector_failed" in captured
+
+
+async def test_all_detectors_failing_raises():
+    """If the only detector fails, raise DetectionError instead of returning []."""
+    ensemble = EnsembleDetector([FailingDetector()], score_threshold=0.0)
+    with pytest.raises(DetectionError, match="failing"):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_multiple_detectors_all_failing_raises():
+    """If every detector in the ensemble fails, raise DetectionError."""
+    ensemble = EnsembleDetector([FailingDetector(), FailingDetector()], score_threshold=0.0)
+    with pytest.raises(DetectionError):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_empty_detectors_list_raises():
+    """An EnsembleDetector with no detectors configured must raise DetectionError on text."""
+    ensemble = EnsembleDetector([], score_threshold=0.0)
+    with pytest.raises(DetectionError, match="No PII detectors"):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_fail_closed_raises_on_any_failure():
+    """With fail_closed=True, even a single failing detector raises DetectionError."""
+    ent = _ent("PERSON", "Max", 0, 3, 0.9, "presidio")
+    ensemble = EnsembleDetector(
+        [FailingDetector(), FakeDetector([ent])],
+        score_threshold=0.0,
+        fail_closed=True,
+    )
+    with pytest.raises(DetectionError, match="failing"):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_empty_text_does_not_run_or_raise():
+    """Empty text short-circuits before running any detector."""
+    ensemble = EnsembleDetector([FailingDetector()], fail_closed=True)
+    assert await ensemble.detect("", "de") == []
+
+
+async def test_redactor_per_call_language_loads_on_demand(monkeypatch):
+    """Redactor(language='de') called with language='en' loads 'en' on demand."""
+    import noirdoc.detection.model_manager as mm
+    import noirdoc.detection.presidio_detector as pd_mod
+    from noirdoc.sdk import Redactor
+
+    loaded_langs: list[list[str]] = []
+
+    class FakePresidio(BaseDetector):
+        def __init__(self, languages: list[str] | None = None) -> None:
+            self.langs = list(languages or [])
+            loaded_langs.append(self.langs)
+
+        async def detect(self, text: str, language: str = "de") -> list[DetectedEntity]:
+            if language not in self.langs:
+                raise ValueError(f"No matching recognizers for {language}")
+            return []
+
+        @property
+        def name(self) -> str:
+            return "presidio"
+
+    monkeypatch.setattr(mm, "ensure_spacy_models", lambda langs: None)
+    monkeypatch.setattr(pd_mod, "PresidioDetector", FakePresidio)
+
+    r = Redactor(language="de", detector="presidio")
+    await r.aredact_text("Hallo", language="de")
+    await r.aredact_text("Hello", language="en")
+    assert loaded_langs == [["de"], ["de", "en"]]
 
 
 # --- PERSON validation ---

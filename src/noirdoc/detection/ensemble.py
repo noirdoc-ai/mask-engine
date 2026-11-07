@@ -5,7 +5,7 @@ import re
 
 import structlog
 
-from noirdoc.detection.base import BaseDetector, DetectedEntity
+from noirdoc.detection.base import BaseDetector, DetectedEntity, DetectionError
 
 log = structlog.get_logger(__name__)
 
@@ -109,21 +109,36 @@ class EnsembleDetector:
         self,
         detectors: list[BaseDetector],
         score_threshold: float = 0.5,
+        *,
+        fail_closed: bool = False,
     ) -> None:
         self.detectors = detectors
         self.score_threshold = score_threshold
+        self.fail_closed = fail_closed
 
     async def detect(self, text: str, language: str = "de") -> list[DetectedEntity]:
         if not text:
             return []
+
+        if not self.detectors:
+            raise DetectionError("No PII detectors configured")
 
         results = await asyncio.gather(
             *(self._run_one(d, text, language) for d in self.detectors),
         )
 
         all_entities: list[DetectedEntity] = []
-        for result in results:
-            all_entities.extend(result)
+        failed: list[str] = []
+        for detector, result in zip(self.detectors, results, strict=True):
+            if result is None:
+                failed.append(getattr(detector, "name", detector.__class__.__name__))
+            else:
+                all_entities.extend(result)
+
+        if failed and (self.fail_closed or len(failed) == len(self.detectors)):
+            raise DetectionError(
+                f"PII detector(s) failed ({', '.join(failed)}); refusing to return unmasked text",
+            )
 
         filtered = [
             e
@@ -142,13 +157,13 @@ class EnsembleDetector:
         detector: BaseDetector,
         text: str,
         language: str,
-    ) -> list[DetectedEntity]:
-        """Run one detector. On failure, log and degrade to empty results.
+    ) -> list[DetectedEntity] | None:
+        """Run one detector. On failure, log and return ``None``.
 
-        A silent ``return_exceptions=True`` would bury detector failures
-        and cause silent leakage (e.g. PERSON detection going dark on a
-        spaCy load error). We log explicitly so operators can spot the
-        degraded state.
+        Callers distinguish ``None`` (detector crashed) from ``[]`` (detector
+        ran cleanly and found nothing) so ``detect()`` can raise
+        :class:`DetectionError` when every detector fails (or when
+        ``fail_closed=True``).
         """
         try:
             return await detector.detect(text, language)
@@ -159,7 +174,7 @@ class EnsembleDetector:
                 language=language,
                 error=str(exc),
             )
-            return []
+            return None
 
     def _merge_entities(
         self,
