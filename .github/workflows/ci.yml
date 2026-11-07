@@ -42,7 +42,5 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --extra dev
-      - name: Download spaCy model
-        run: uv run python -m spacy download de_core_news_lg
       - name: Run tests
         run: uv run pytest -m "not slow" --tb=short
