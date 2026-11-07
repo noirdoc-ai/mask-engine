@@ -81,3 +81,34 @@ def test_offsets_preserved_with_replacement():
     assert "<<PERSON_1>>" in result
     assert "<<PERSON_2>>" in result
     assert "CD" in result
+
+
+def test_overlapping_entities_same_start_do_not_corrupt():
+    """Regression for #34: overlapping spans passed directly must not corrupt placeholders."""
+    from noirdoc.reidentification.engine import ReidentificationEngine
+
+    text = "IBAN: DE89 3704 0044 0532 0130 00"
+    entities = [
+        _ent("IBAN", "DE89 3704 0044 0532 0130 00", 6, 33),
+        _ent("LOCATION", "DE89", 6, 10),
+        _ent("PHONE", "0044 0532 0130 00", 16, 33),
+    ]
+    mapper = PseudonymMapper()
+    redacted = PseudonymizationEngine().pseudonymize(text, entities, mapper)
+    assert redacted == "IBAN: <<IBAN_1>>"
+    revealed = ReidentificationEngine().reidentify(redacted, mapper)
+    assert revealed == text
+
+
+def test_overlapping_entity_starting_later_does_not_leak():
+    """Inner span starting after outer span must not shift outer replacement and leak tail."""
+    text = "Termin bei Praxis Dr. Li Wagner."
+    entities = [
+        _ent("ORGANIZATION", "Praxis Dr. Li Wagner", 11, 31),
+        _ent("PERSON", "Dr. Li", 18, 24),
+    ]
+    mapper = PseudonymMapper()
+    redacted = PseudonymizationEngine().pseudonymize(text, entities, mapper)
+    assert "Wagner" not in redacted
+    assert "Li" not in redacted
+    assert redacted == "Termin bei <<ORGANIZATION_1>>."
