@@ -231,3 +231,57 @@ async def test_dispatcher_uses_text_path_for_text_based_pdf_even_with_ocr(text_p
     result = await extractor.extract_text(block)
     assert result is not None
     assert "Invoice 2024 Acme Corp" in result
+
+
+def test_fallback_caps_render_scale_on_oversized_page(monkeypatch):
+    """Regression for #46 / H-001: page.render scale is capped so max dimension <= _MAX_DIM."""
+    import pypdfium2 as pdfium
+    from PIL import Image
+
+    from noirdoc.file_analysis.extractors import ocr as ocr_mod
+    from noirdoc.file_analysis.extractors import pdf as pdf_mod
+
+    rendered_scales: list[float] = []
+
+    class FakeBitmap:
+        def to_pil(self):
+            return Image.new("RGB", (100, 100), "white")
+
+    class FakeTextPage:
+        def get_text_range(self):
+            return ""
+
+        def close(self):
+            pass
+
+    class FakePage:
+        def get_textpage(self):
+            return FakeTextPage()
+
+        def get_size(self):
+            return (4096.0, 4096.0)
+
+        def render(self, scale=1):
+            rendered_scales.append(scale)
+            return FakeBitmap()
+
+        def close(self):
+            pass
+
+    class FakePdf:
+        def get_metadata_value(self, key):
+            return ""
+
+        def __iter__(self):
+            return iter([FakePage()])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(pdfium, "PdfDocument", lambda data: FakePdf())
+    monkeypatch.setattr(ocr_mod, "ocr_image", lambda pil, lang="deu+eng": "ocr text")
+
+    out = pdf_mod.extract_pdf_with_ocr_fallback(b"%PDF-fake", render_scale=2)
+    assert out == "ocr text"
+    assert len(rendered_scales) == 1
+    assert rendered_scales[0] <= 1.0

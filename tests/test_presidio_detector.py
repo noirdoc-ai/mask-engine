@@ -160,3 +160,31 @@ async def test_entity_has_correct_fields(detector):
 
 async def test_name_property(detector):
     assert detector.name == "presidio"
+
+
+def test_presidio_entities_excludes_location():
+    """Regression for #42: LOCATION must not be requested from spaCy Presidio."""
+    from noirdoc.detection.presidio_detector import _PRESIDIO_ENTITIES
+
+    assert "LOCATION" not in _PRESIDIO_ENTITIES
+
+
+def test_german_phone_and_steuer_id_do_not_match_inside_iban():
+    """Regression for #34/#44: German regex recognizers must not match substrings inside IBANs."""
+    from noirdoc.detection.presidio_detector import (
+        GermanPhoneRecognizer,
+        GermanSteuerIDRecognizer,
+        GermanSVNRRecognizer,
+    )
+
+    phone_rec = GermanPhoneRecognizer()
+    steuer_rec = GermanSteuerIDRecognizer()
+    svnr_rec = GermanSVNRRecognizer()
+
+    for sample in (
+        "IBAN: DE89 3704 0044 0532 0130 00",
+        "IBAN: DE89370400440532013000",
+    ):
+        assert phone_rec.analyze(sample, entities=["PHONE_NUMBER"]) == []
+        assert steuer_rec.analyze(sample, entities=["DE_STEUER_ID"]) == []
+        assert svnr_rec.analyze(sample, entities=["DE_SVNR"]) == []

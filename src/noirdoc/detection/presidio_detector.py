@@ -35,7 +35,6 @@ _PRESIDIO_ENTITIES = [
     "PHONE_NUMBER",
     "IBAN_CODE",
     "CREDIT_CARD",
-    "LOCATION",
     "DATE_TIME",
     "IP_ADDRESS",
     "URL",
@@ -51,10 +50,26 @@ class GermanPhoneRecognizer(PatternRecognizer):
     """Erkennt deutsche Telefonnummern in gängigen Formaten."""
 
     PATTERNS: ClassVar[list[Pattern]] = [
-        Pattern("DE_PHONE_1", r"\+49[\s\-]?\d{2,4}[\s\-]?\d{3,8}(?:[\s\-]\d{1,5}){0,2}", 0.7),
-        Pattern("DE_PHONE_2", r"0049[\s\-]?\d{2,4}[\s\-]?\d{3,8}(?:[\s\-]\d{1,5}){0,2}", 0.7),
-        Pattern("DE_PHONE_3", r"0\d{2,4}[\s/\-]\d{3,8}(?:[\s/\-]\d{1,5}){0,2}", 0.6),
-        Pattern("DE_PHONE_4", r"\(0\d{2,4}\)\s?\d{3,8}(?:[\s\-]\d{1,5}){0,2}", 0.7),
+        Pattern(
+            "DE_PHONE_1",
+            r"(?<![\w+])\+49[\s\-]?\d{2,4}[\s\-]?\d{3,8}(?:[\s\-]\d{1,5}){0,2}(?!\w)",
+            0.7,
+        ),
+        Pattern(
+            "DE_PHONE_2",
+            r"(?<![\w+])0049[\s\-]?\d{2,4}[\s\-]?\d{3,8}(?:[\s\-]\d{1,5}){0,2}(?!\w)",
+            0.7,
+        ),
+        Pattern(
+            "DE_PHONE_3",
+            r"(?<![\w+])(?<!\d\s)0[1-9]\d{1,3}[\s/\-]\d{3,8}(?:[\s/\-]\d{1,5}){0,2}(?!\w)",
+            0.6,
+        ),
+        Pattern(
+            "DE_PHONE_4",
+            r"(?<![\w+])\(0[1-9]\d{1,3}\)\s?\d{3,8}(?:[\s\-]\d{1,5}){0,2}(?!\w)",
+            0.7,
+        ),
     ]
     CONTEXT: ClassVar[list[str]] = [
         "telefon",
@@ -81,9 +96,9 @@ class GermanSVNRRecognizer(PatternRecognizer):
 
     PATTERNS: ClassVar[list[Pattern]] = [
         # Spaced: "65 230785 M 014"
-        Pattern("DE_SVNR_1", r"\d{2}\s\d{6}\s[A-Z]\s\d{3}", 0.6),
+        Pattern("DE_SVNR_1", r"(?<![\w+])\d{2}\s\d{6}\s[A-Z]\s\d{3}(?!\w)", 0.6),
         # Compact: "65230785M014"
-        Pattern("DE_SVNR_2", r"\d{2}\d{6}[A-Z]\d{3}", 0.4),
+        Pattern("DE_SVNR_2", r"(?<![\w+])\d{2}\d{6}[A-Z]\d{3}(?!\w)", 0.4),
     ]
     CONTEXT: ClassVar[list[str]] = [
         "sozialversicherungsnummer",
@@ -111,9 +126,9 @@ class GermanSteuerIDRecognizer(PatternRecognizer):
 
     PATTERNS: ClassVar[list[Pattern]] = [
         # Grouped 2+3+3+3: "14 815 037 682"
-        Pattern("DE_STEUERID_1", r"[1-9]\d\s\d{3}\s\d{3}\s\d{3}", 0.5),
+        Pattern("DE_STEUERID_1", r"(?<![\w+])(?<!\d\s)[1-9]\d\s\d{3}\s\d{3}\s\d{3}(?!\w)", 0.5),
         # Compact: "14815037682"
-        Pattern("DE_STEUERID_2", r"[1-9]\d{10}", 0.3),
+        Pattern("DE_STEUERID_2", r"(?<![\w+])[1-9]\d{10}(?!\w)", 0.3),
     ]
     CONTEXT: ClassVar[list[str]] = [
         "steuer-id",
