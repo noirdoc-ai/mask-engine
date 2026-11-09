@@ -20,7 +20,6 @@ caller can fall through to returning the original bytes.
 from __future__ import annotations
 
 import io
-import re
 from typing import TYPE_CHECKING
 
 import structlog
@@ -32,8 +31,6 @@ if TYPE_CHECKING:
     from noirdoc.pseudonymization.mapper import PseudonymMapper
 
 logger = structlog.get_logger()
-
-_PSEUDO_PATTERN = re.compile(r"<<[A-Z_]+_\d+>>")
 
 _TEXT_MIMES = {
     "text/plain",
@@ -115,8 +112,6 @@ def _reidentify_docx(
         return None
 
     def transform(text: str) -> str:
-        if not _PSEUDO_PATTERN.search(text):
-            return text
         return engine.reidentify(text, mapper)
 
     changed = rewrite_document_texts(doc, transform, strip_deleted=False)
@@ -150,7 +145,7 @@ def _reidentify_xlsx(
     for ws in wb.worksheets:  # chartsheets have no cells; their headers are parts
         for row in ws.iter_rows():
             for cell in row:
-                if isinstance(cell.value, str) and _PSEUDO_PATTERN.search(cell.value):
+                if isinstance(cell.value, str):
                     new_val = engine.reidentify(cell.value, mapper)
                     if new_val != cell.value:
                         cell.value = new_val

@@ -107,6 +107,9 @@ class Redactor:
             self._mapper = PseudonymMapper()
 
         self._ensemble: EnsembleDetector | None = None
+        self._loaded_languages: set[str] = set()
+        self._requested_language: str | None = None
+        self._gliner_instance: BaseDetector | None = None
 
     @property
     def mapper(self) -> PseudonymMapper:
@@ -119,39 +122,48 @@ class Redactor:
     # -- detection lifecycle ---------------------------------------------------
 
     async def _ensure_detector(self) -> EnsembleDetector:
-        if self._ensemble is not None:
+        target_lang = self._requested_language or self._language
+        if self._ensemble is not None and (
+            not self._loaded_languages or target_lang in self._loaded_languages
+        ):
             return self._ensemble
 
         from noirdoc.detection.ensemble import EnsembleDetector
         from noirdoc.detection.model_manager import ensure_spacy_models
 
+        langs = sorted(self._loaded_languages | {self._language, target_lang})
         detectors: list[BaseDetector] = []
 
         if self._detector_choice in ("presidio", "ensemble"):
-            await asyncio.to_thread(ensure_spacy_models, [self._language])
+            await asyncio.to_thread(ensure_spacy_models, langs)
             from noirdoc.detection.presidio_detector import PresidioDetector
 
-            detectors.append(PresidioDetector(languages=[self._language]))
+            detectors.append(PresidioDetector(languages=langs))
 
         if self._detector_choice in ("gliner", "ensemble"):
-            try:
-                from noirdoc.detection.gliner_detector import GlinerDetector
-            except ImportError:
-                if self._detector_choice == "gliner":
-                    raise  # User explicitly asked for GLiNER — fail loud.
-                warnings.warn(
-                    "GLiNER is not installed; using Presidio only. "
-                    "Install 'noirdoc[full]' for the ensemble detector.",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            if self._gliner_instance is not None:
+                detectors.append(self._gliner_instance)
             else:
-                gliner = await asyncio.to_thread(
-                    GlinerDetector,
-                    model_name=self._gliner_model,
-                )
-                detectors.append(gliner)
+                try:
+                    from noirdoc.detection.gliner_detector import GlinerDetector
+                except ImportError:
+                    if self._detector_choice == "gliner":
+                        raise  # User explicitly asked for GLiNER — fail loud.
+                    warnings.warn(
+                        "GLiNER is not installed; using Presidio only. "
+                        "Install 'noirdoc[full]' for the ensemble detector.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                else:
+                    gliner = await asyncio.to_thread(
+                        GlinerDetector,
+                        model_name=self._gliner_model,
+                    )
+                    self._gliner_instance = gliner
+                    detectors.append(gliner)
 
+        self._loaded_languages = set(langs)
         self._ensemble = EnsembleDetector(
             detectors=detectors,
             score_threshold=self._score_threshold,
@@ -183,6 +195,7 @@ class Redactor:
         from noirdoc.pseudonymization.engine import PseudonymizationEngine
 
         lang = language or self._language
+        self._requested_language = lang
         detector = await self._ensure_detector()
         entities = await detector.detect(text, lang)
         result = PseudonymizationEngine().pseudonymize(text, entities, self._mapper)
@@ -250,6 +263,7 @@ class Redactor:
         if mime == _XLSX_MIME:
             from noirdoc.file_analysis.xlsx_inference import XlsxLoadError, pseudonymize_xlsx_smart
 
+            self._requested_language = language
             detector = await self._ensure_detector()
             try:
                 xr = await pseudonymize_xlsx_smart(
@@ -289,6 +303,7 @@ class Redactor:
 
         block.extracted_text = text
 
+        self._requested_language = language
         detector = await self._ensure_detector()
         entities = await detector.detect(text, language)
         block.entities = entities

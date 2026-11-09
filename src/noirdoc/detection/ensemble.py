@@ -5,7 +5,7 @@ import re
 
 import structlog
 
-from noirdoc.detection.base import BaseDetector, DetectedEntity
+from noirdoc.detection.base import BaseDetector, DetectedEntity, DetectionError
 
 log = structlog.get_logger(__name__)
 
@@ -52,6 +52,13 @@ _PERSON_TRAILING_REJECT: set[str] = {
 # Pattern for username-like strings (lowercase + digits, no spaces)
 _USERNAME_PATTERN = re.compile(r"^[a-z0-9._@\-]+$")
 
+# InvertedNameRecognizer matches "Lastname, Firstname" / "Lastname, Dr. Firstname".
+# Exempt that shape from the general comma rejection.
+_INVERTED_NAME_PATTERN = re.compile(
+    r"^[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?,\s+"
+    r"(?:(?:Dr|Prof)\.\s+)?[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?$"
+)
+
 
 def _validate_person(entity: DetectedEntity) -> bool:
     """Return False if a PERSON entity is likely a false positive."""
@@ -60,8 +67,12 @@ def _validate_person(entity: DetectedEntity) -> bool:
 
     text = entity.text
 
-    # Reject entities containing commas or newlines (spaCy boundary absorption)
-    if "," in text or "\n" in text:
+    if "\n" in text:
+        return False
+
+    # Reject entities containing commas (spaCy boundary absorption like "Hoffmann, und"),
+    # except the "Lastname, Firstname" form produced by InvertedNameRecognizer.
+    if "," in text and not _INVERTED_NAME_PATTERN.match(text):
         return False
 
     # Reject single-character entities
@@ -73,7 +84,7 @@ def _validate_person(entity: DetectedEntity) -> bool:
         return False
 
     # Multi-word validation
-    words = text.lower().split()
+    words = [w.rstrip(",") for w in text.lower().split()]
     if len(words) > 1:
         if any(w in _PERSON_STRONG_REJECT for w in words):
             return False
@@ -98,43 +109,61 @@ class EnsembleDetector:
         self,
         detectors: list[BaseDetector],
         score_threshold: float = 0.5,
+        *,
+        fail_closed: bool = False,
     ) -> None:
         self.detectors = detectors
         self.score_threshold = score_threshold
+        self.fail_closed = fail_closed
 
     async def detect(self, text: str, language: str = "de") -> list[DetectedEntity]:
         if not text:
             return []
+
+        if not self.detectors:
+            raise DetectionError("No PII detectors configured")
 
         results = await asyncio.gather(
             *(self._run_one(d, text, language) for d in self.detectors),
         )
 
         all_entities: list[DetectedEntity] = []
-        for result in results:
-            all_entities.extend(result)
+        failed: list[str] = []
+        for detector, result in zip(self.detectors, results, strict=True):
+            if result is None:
+                failed.append(getattr(detector, "name", detector.__class__.__name__))
+            else:
+                all_entities.extend(result)
+
+        if failed and (self.fail_closed or len(failed) == len(self.detectors)):
+            raise DetectionError(
+                f"PII detector(s) failed ({', '.join(failed)}); refusing to return unmasked text",
+            )
 
         filtered = [
             e
             for e in all_entities
             if e.score >= _TYPE_THRESHOLDS.get(e.entity_type, self.score_threshold)
         ]
-        merged = self._merge_entities(filtered)
-        validated = [e for e in merged if _validate_person(e)]
-        return sorted(validated, key=lambda e: e.start)
+        # Validate BEFORE merging so a rejected span (e.g. "Max Müller wohnhaft")
+        # cannot win the overlap resolution against a valid shorter span ("Max Müller")
+        # and then get dropped, leaving the name unmasked.
+        validated = [e for e in filtered if _validate_person(e)]
+        merged = self._merge_entities(validated, text)
+        return sorted(merged, key=lambda e: e.start)
 
     @staticmethod
     async def _run_one(
         detector: BaseDetector,
         text: str,
         language: str,
-    ) -> list[DetectedEntity]:
-        """Run one detector. On failure, log and degrade to empty results.
+    ) -> list[DetectedEntity] | None:
+        """Run one detector. On failure, log and return ``None``.
 
-        A silent ``return_exceptions=True`` would bury detector failures
-        and cause silent leakage (e.g. PERSON detection going dark on a
-        spaCy load error). We log explicitly so operators can spot the
-        degraded state.
+        Callers distinguish ``None`` (detector crashed) from ``[]`` (detector
+        ran cleanly and found nothing) so ``detect()`` can raise
+        :class:`DetectionError` when every detector fails (or when
+        ``fail_closed=True``).
         """
         try:
             return await detector.detect(text, language)
@@ -145,42 +174,97 @@ class EnsembleDetector:
                 language=language,
                 error=str(exc),
             )
+            return None
+
+    def _merge_entities(
+        self,
+        entities: list[DetectedEntity],
+        text: str | None = None,
+    ) -> list[DetectedEntity]:
+        """Resolve all overlapping spans — regardless of entity_type — into a
+        single non-overlapping entity per transitively-overlapping cluster.
+
+        1. Sort by start ascending, then span length descending.
+        2. Group transitively overlapping spans into clusters.
+        3. Within each cluster, pick the winning entity via ``_pick_winner``
+           (higher score → longer span → presidio) for ``entity_type``/``score``/
+           ``source``, and expand the span to the union ``[min(start), max(end))``
+           so no detected character is left unmasked.
+        """
+        if not entities:
             return []
 
-    def _merge_entities(self, entities: list[DetectedEntity]) -> list[DetectedEntity]:
-        """
-        Overlap Resolution:
-        1. Sort by start, then by span length descending (longer first)
-        2. For each entity, check overlap with already accepted entities
-        3. On overlap with SAME type: higher score wins; tie → longer span; tie → presidio wins
-        4. On overlap with DIFFERENT type: keep both (dual-type annotation)
-        5. No overlap: accept entity
-        """
         sorted_ents = sorted(
             entities,
             key=lambda e: (e.start, -(e.end - e.start)),
         )
 
         accepted: list[DetectedEntity] = []
-        for candidate in sorted_ents:
-            same_type_idx = None
-            for i, existing in enumerate(accepted):
-                if (
-                    candidate.start < existing.end
-                    and existing.start < candidate.end
-                    and candidate.entity_type == existing.entity_type
-                ):
-                    same_type_idx = i
-                    break
+        cluster: list[DetectedEntity] = [sorted_ents[0]]
+        cluster_end = sorted_ents[0].end
 
-            if same_type_idx is None:
-                accepted.append(candidate)
+        for candidate in sorted_ents[1:]:
+            if candidate.start < cluster_end:
+                cluster.append(candidate)
+                if candidate.end > cluster_end:
+                    cluster_end = candidate.end
             else:
-                existing = accepted[same_type_idx]
-                winner = self._pick_winner(existing, candidate)
-                accepted[same_type_idx] = winner
+                accepted.append(self._resolve_cluster(cluster, text))
+                cluster = [candidate]
+                cluster_end = candidate.end
 
+        accepted.append(self._resolve_cluster(cluster, text))
         return accepted
+
+    @classmethod
+    def _resolve_cluster(
+        cls,
+        cluster: list[DetectedEntity],
+        text: str | None = None,
+    ) -> DetectedEntity:
+        winner = cluster[0]
+        for candidate in cluster[1:]:
+            winner = cls._pick_winner(winner, candidate)
+
+        start = min(e.start for e in cluster)
+        end = max(e.end for e in cluster)
+        if winner.start == start and winner.end == end:
+            return winner
+
+        for ent in cluster:
+            if ent.start == start and ent.end == end:
+                span_text = ent.text
+                break
+        else:
+            if (
+                text is not None
+                and len(text) >= end
+                and all(text[e.start : e.end] == e.text for e in cluster)
+            ):
+                span_text = text[start:end]
+            else:
+                span_text = cls._union_text(cluster, start, end)
+
+        return DetectedEntity(
+            entity_type=winner.entity_type,
+            text=span_text,
+            start=start,
+            end=end,
+            score=winner.score,
+            source=winner.source,
+        )
+
+    @staticmethod
+    def _union_text(cluster: list[DetectedEntity], start: int, end: int) -> str:
+        length = end - start
+        chars: list[str | None] = [None] * length
+        for ent in cluster:
+            offset = ent.start - start
+            for i, ch in enumerate(ent.text):
+                pos = offset + i
+                if 0 <= pos < length and chars[pos] is None:
+                    chars[pos] = ch
+        return "".join(c if c is not None else " " for c in chars)
 
     @staticmethod
     def _pick_winner(a: DetectedEntity, b: DetectedEntity) -> DetectedEntity:

@@ -280,3 +280,46 @@ def test_reidentify_docx_blind_spot_surfaces():
     assert b"<<EMAIL_1>>" not in xml
     assert "Max Müller".encode() in xml
     assert b"max@test.de" in xml
+
+
+def test_reidentify_docx_and_xlsx_lenient_placeholders():
+    """Regression for #43: DOCX and XLSX reidentification must not skip the lenient pass."""
+    import io
+
+    from docx import Document
+    from openpyxl import Workbook, load_workbook
+
+    from tests.file_analysis.docx_helpers import docx_bytes
+
+    doc = Document()
+    doc.add_paragraph("Kontakt: <<person_1>> und «EMAIL_1»")
+    docx_out = reidentify_file_bytes(
+        docx_bytes(doc),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        MAPPINGS,
+    )
+    assert docx_out is not None
+    reloaded_doc = Document(io.BytesIO(docx_out))
+    assert reloaded_doc.paragraphs[0].text == "Kontakt: Max Müller und max@test.de"
+
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws["A1"] = "<<person_1>>"
+    ws["B1"] = "«EMAIL_1»"
+    buf = io.BytesIO()
+    wb.save(buf)
+    wb.close()
+
+    xlsx_out = reidentify_file_bytes(
+        buf.getvalue(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        MAPPINGS,
+    )
+    assert xlsx_out is not None
+    reloaded_wb = load_workbook(io.BytesIO(xlsx_out))
+    reloaded_ws = reloaded_wb.active
+    assert reloaded_ws is not None
+    assert reloaded_ws["A1"].value == "Max Müller"
+    assert reloaded_ws["B1"].value == "max@test.de"
+    reloaded_wb.close()

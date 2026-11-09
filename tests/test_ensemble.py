@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from noirdoc.detection.base import BaseDetector, DetectedEntity
+import pytest
+
+from noirdoc.detection.base import BaseDetector, DetectedEntity, DetectionError
 from noirdoc.detection.ensemble import EnsembleDetector
 
 # --- Helpers ---
@@ -178,6 +180,76 @@ async def test_failing_detector_logs_warning(capsys):
     assert "detection.detector_failed" in captured
 
 
+async def test_all_detectors_failing_raises():
+    """If the only detector fails, raise DetectionError instead of returning []."""
+    ensemble = EnsembleDetector([FailingDetector()], score_threshold=0.0)
+    with pytest.raises(DetectionError, match="failing"):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_multiple_detectors_all_failing_raises():
+    """If every detector in the ensemble fails, raise DetectionError."""
+    ensemble = EnsembleDetector([FailingDetector(), FailingDetector()], score_threshold=0.0)
+    with pytest.raises(DetectionError):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_empty_detectors_list_raises():
+    """An EnsembleDetector with no detectors configured must raise DetectionError on text."""
+    ensemble = EnsembleDetector([], score_threshold=0.0)
+    with pytest.raises(DetectionError, match="No PII detectors"):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_fail_closed_raises_on_any_failure():
+    """With fail_closed=True, even a single failing detector raises DetectionError."""
+    ent = _ent("PERSON", "Max", 0, 3, 0.9, "presidio")
+    ensemble = EnsembleDetector(
+        [FailingDetector(), FakeDetector([ent])],
+        score_threshold=0.0,
+        fail_closed=True,
+    )
+    with pytest.raises(DetectionError, match="failing"):
+        await ensemble.detect("Max Müller", "de")
+
+
+async def test_empty_text_does_not_run_or_raise():
+    """Empty text short-circuits before running any detector."""
+    ensemble = EnsembleDetector([FailingDetector()], fail_closed=True)
+    assert await ensemble.detect("", "de") == []
+
+
+async def test_redactor_per_call_language_loads_on_demand(monkeypatch):
+    """Redactor(language='de') called with language='en' loads 'en' on demand."""
+    import noirdoc.detection.model_manager as mm
+    import noirdoc.detection.presidio_detector as pd_mod
+    from noirdoc.sdk import Redactor
+
+    loaded_langs: list[list[str]] = []
+
+    class FakePresidio(BaseDetector):
+        def __init__(self, languages: list[str] | None = None) -> None:
+            self.langs = list(languages or [])
+            loaded_langs.append(self.langs)
+
+        async def detect(self, text: str, language: str = "de") -> list[DetectedEntity]:
+            if language not in self.langs:
+                raise ValueError(f"No matching recognizers for {language}")
+            return []
+
+        @property
+        def name(self) -> str:
+            return "presidio"
+
+    monkeypatch.setattr(mm, "ensure_spacy_models", lambda langs: None)
+    monkeypatch.setattr(pd_mod, "PresidioDetector", FakePresidio)
+
+    r = Redactor(language="de", detector="presidio")
+    await r.aredact_text("Hallo", language="de")
+    await r.aredact_text("Hello", language="en")
+    assert loaded_langs == [["de"], ["de", "en"]]
+
+
 # --- PERSON validation ---
 
 
@@ -229,21 +301,81 @@ async def test_person_wohnhaft_filtered():
     assert len(result) == 0
 
 
-# --- Dual-type overlap ---
+# --- Cross-type overlap (#34) ---
 
 
-async def test_overlap_different_types_both_kept():
-    """Overlapping entities with different types are both kept."""
+async def test_overlap_different_types_resolved_to_one():
+    """Overlapping entities of different types resolve to a single entity (#34).
+
+    Keeping both causes PseudonymizationEngine to overwrite one placeholder
+    with the other and corrupt the output (e.g. ``<<LOCATION_1>>AN_1>>``).
+    """
     ent_a = _ent("PERSON", "Hoffmann", 0, 8, 0.85, "presidio")
     ent_b = _ent("ORGANIZATION", "Hoffmann", 0, 8, 0.80, "gliner")
     ensemble = EnsembleDetector(
         [FakeDetector([ent_a]), FakeDetector([ent_b])],
         score_threshold=0.0,
     )
-    result = await ensemble.detect("dummy", "de")
-    assert len(result) == 2
-    types = {e.entity_type for e in result}
-    assert types == {"PERSON", "ORGANIZATION"}
+    result = await ensemble.detect("Hoffmann", "de")
+    assert len(result) == 1
+    assert result[0].entity_type == "PERSON"
+    assert result[0].score == 0.85
+
+
+async def test_iban_with_nested_location_is_one_entity():
+    """Regression for #34: IBAN span containing 'DE89' as LOCATION and digits as PHONE."""
+    iban_text = "DE89 3704 0044 0532 0130 00"
+    full_text = f"IBAN: {iban_text}"
+    ent_iban = _ent("IBAN", iban_text, 6, 33, 1.0, "presidio")
+    ent_loc = _ent("LOCATION", "DE89", 6, 10, 0.85, "presidio")
+    ent_phone = _ent("PHONE", "0044 0532 0130 00", 16, 33, 0.75, "presidio")
+    ensemble = EnsembleDetector(
+        [FakeDetector([ent_iban, ent_loc, ent_phone])],
+        score_threshold=0.0,
+    )
+    result = await ensemble.detect(full_text, "de")
+    assert len(result) == 1
+    assert result[0].entity_type == "IBAN"
+    assert result[0].text == iban_text
+    assert (result[0].start, result[0].end) == (6, 33)
+
+
+async def test_partial_overlap_different_types_covers_union():
+    """Partially overlapping spans of different types merge to the union span."""
+    text = "Dr. Müller-Schmidt"
+    ent_a = _ent("PERSON", "Dr. Müller", 0, 10, 0.80, "gliner")
+    ent_b = _ent("ORGANIZATION", "Müller-Schmidt", 4, 18, 0.90, "presidio")
+    ensemble = EnsembleDetector(
+        [FakeDetector([ent_a]), FakeDetector([ent_b])],
+        score_threshold=0.0,
+    )
+    result = await ensemble.detect(text, "de")
+    assert len(result) == 1
+    assert result[0].entity_type == "ORGANIZATION"
+    assert (result[0].start, result[0].end) == (0, 18)
+    assert result[0].text == "Dr. Müller-Schmidt"
+
+
+async def test_rejected_person_does_not_absorb_valid_person():
+    """A PERSON span rejected by _validate_person must not swallow a valid one."""
+    ent_bad = _ent("PERSON", "Max Müller wohnhaft", 0, 19, 0.90, "presidio")
+    ent_good = _ent("PERSON", "Max Müller", 0, 10, 0.80, "gliner")
+    ensemble = EnsembleDetector(
+        [FakeDetector([ent_bad]), FakeDetector([ent_good])],
+        score_threshold=0.0,
+    )
+    result = await ensemble.detect("Max Müller wohnhaft", "de")
+    assert len(result) == 1
+    assert result[0].text == "Max Müller"
+
+
+async def test_inverted_name_kept():
+    """InvertedNameRecognizer ('Nachname, Vorname') is not rejected by comma rule."""
+    for name in ("Müller, Hans", "Schmidt, Dr. Anna", "Weber-Klein, Hans-Peter"):
+        ent = _ent("PERSON", name, 0, len(name), 0.70, "presidio")
+        ensemble = EnsembleDetector([FakeDetector([ent])], score_threshold=0.0)
+        result = await ensemble.detect(name, "de")
+        assert len(result) == 1, f"expected {name!r} to be kept"
 
 
 async def test_overlap_same_type_still_picks_winner():

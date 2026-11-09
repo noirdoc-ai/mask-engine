@@ -5,6 +5,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Ensemble & Pseudonymization: overlapping entities of different types no longer corrupt placeholders or leak plaintext (#34, #35).** `EnsembleDetector._merge_entities` previously kept overlapping spans when their `entity_type` differed ("dual-type annotation"), and `PseudonymizationEngine.pseudonymize` replaced them back-to-front by original offsets, corrupting e.g. `IBAN: DE89 ...` into `<<LOCATION_1>>AN_1>>` or shifting outer replacements so the tail of an entity leaked in cleartext. Overlapping spans of any type now resolve into a single union span (`_pick_winner` sets the type; `PseudonymizationEngine` and `reconstruction._build_replacements` also merge overlaps for callers passing entity lists directly). `_validate_person` now runs before `_merge_entities` so a rejected longer span cannot swallow a valid shorter name, and `InvertedNameRecognizer` (`"Lastname, Firstname"`) is exempted from the comma filter. (Reported by @IBashniak in #34; fix co-authored with @niklasafink in #35.)
+- **Ensemble: raise `DetectionError` when all detectors fail (#36).** `EnsembleDetector.detect` previously caught every detector exception and returned `[]`, silently passing cleartext when every configured detector failed (or when `detectors=[]`). It now raises `DetectionError` (and supports `fail_closed=True` to raise on any single detector failure). `Redactor._ensure_detector` also loads per-call languages on demand so calling `Redactor(language="de").redact_text(..., language="en")` no longer fails in Presidio. (Co-authored with @niklasafink in #36.)
+
+### Fixed
+- **Presidio: remove `"LOCATION"` from `_PRESIDIO_ENTITIES` and add word boundaries to German regex recognizers (#42, #44).** `"LOCATION"` remained in `_PRESIDIO_ENTITIES` despite the comment delegating `LOCATION` to Flair/GLiNER, causing spaCy `de_core_news_lg` to tag `"DE89"` and lowercase German financial nouns (`"währunggewinne"`) as locations. `GermanPhoneRecognizer`, `GermanSVNRRecognizer`, and `GermanSteuerIDRecognizer` now enforce token boundaries so phone/Steuer-ID patterns no longer match substrings inside IBANs. (Reported by @niklasafink in #42, #44.)
+- **File Reidentification: run lenient placeholder pass on DOCX and XLSX (#43).** `_reidentify_docx` and `_reidentify_xlsx` previously gated `engine.reidentify` on strict `_PSEUDO_PATTERN`, skipping `ReidentificationEngine`'s lenient pass (`<<person_1>>`, `«PERSON_1»`). (Reported by @niklasafink in #43.)
+- **PDF OCR fallback: cap `render_scale` before rendering oversized pages (#46).** `extract_pdf_with_ocr_fallback` now bounds `scale` against `_MAX_DIM` before `page.render()` so pages with large media-box dimensions do not allocate huge bitmaps prior to downscaling. (Reported by @niklasafink in #46.)
+
+### CI
+- **Run slow model and OCR tests in `.github/workflows/slow-tests.yml` and gate PyPI releases on both test tiers (#38).** (Co-authored with @niklasafink in #38.)
+
 ## [0.2.0] — 2026-09-04
 
 Security release, and the first one to change behaviour on purpose. Redaction

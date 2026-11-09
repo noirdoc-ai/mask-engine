@@ -1,0 +1,60 @@
+# Model-loading tests (`-m slow`) and OCR tests need the `full` extra, the
+# spaCy model, GLiNER/Flair weights and Tesseract. They are too heavy for every
+# push, so they run weekly, on demand, and on PRs that touch detection or
+# (re)identification code. Without this job `test_german_roundtrip` never ran
+# anywhere, which is how #34 shipped in 0.2.0.
+name: Slow tests
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"  # Mondays 04:00 UTC
+  workflow_dispatch:
+  workflow_call:
+  pull_request:
+    paths:
+      - "src/noirdoc/detection/**"
+      - "src/noirdoc/pseudonymization/**"
+      - "src/noirdoc/reidentification/**"
+      - "src/noirdoc/file_analysis/extractors/**"
+      - "tests/test_integration_pipeline.py"
+      - "tests/test_presidio_detector.py"
+      - "tests/test_gliner_detector.py"
+      - "tests/test_flair_recognizer.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/slow-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  slow:
+    name: Slow tests (models + OCR)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.12"
+      - name: Install Tesseract (eng + deu)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu
+      - run: uv sync --extra dev --extra full
+      - name: Cache model weights
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.flair
+          key: ml-models-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: ml-models-${{ runner.os }}-
+      - name: Pull spaCy models and GLiNER weights
+        run: uv run noirdoc models pull
+      - name: Run slow tests
+        run: uv run pytest -m slow --tb=short
+      - name: Run OCR tests
+        run: uv run pytest tests/file_analysis/test_pdf_extractor.py --tb=short

@@ -417,3 +417,73 @@ def test_reconstruct_docx_keeps_breaks_and_tabs():
     assert b"<w:tab/>" in xml
     assert b"Anna Mueller" not in xml
     assert extract_docx(new_bytes) == "<<PERSON_1>>\nZeile2\tSpalte"
+
+
+def test_reconstruct_docx_with_overlapping_entities_keeps_later_entity_aligned():
+    """If block.entities has overlapping spans merged by PseudonymizationEngine,
+    _build_replacements must also merge overlaps so later entities stay aligned."""
+    from docx import Document
+
+    from noirdoc.detection.base import DetectedEntity
+    from noirdoc.file_analysis.models import FileBlock
+    from noirdoc.file_analysis.reconstruction import reconstruct
+    from noirdoc.pseudonymization.engine import PseudonymizationEngine
+    from noirdoc.pseudonymization.mapper import PseudonymMapper
+
+    doc = Document()
+    doc.add_paragraph("IBAN: DE89 3704 0044 0532 0130 00 Kontakt: Anna Mueller")
+    raw = docx_bytes(doc)
+    extracted = extract_docx(raw)
+    assert extracted is not None
+
+    iban_str = "DE89 3704 0044 0532 0130 00"
+    iban_start = extracted.index(iban_str)
+    name_str = "Anna Mueller"
+    name_start = extracted.index(name_str)
+
+    entities = [
+        DetectedEntity(
+            entity_type="IBAN",
+            text=iban_str,
+            start=iban_start,
+            end=iban_start + len(iban_str),
+            score=1.0,
+            source="presidio",
+        ),
+        DetectedEntity(
+            entity_type="LOCATION",
+            text="DE89",
+            start=iban_start,
+            end=iban_start + 4,
+            score=0.85,
+            source="presidio",
+        ),
+        DetectedEntity(
+            entity_type="PERSON",
+            text=name_str,
+            start=name_start,
+            end=name_start + len(name_str),
+            score=0.9,
+            source="presidio",
+        ),
+    ]
+    mapper = PseudonymMapper()
+    pseudo = PseudonymizationEngine().pseudonymize(extracted, entities, mapper)
+    block = FileBlock(
+        source_path="test.docx",
+        source_type="file",
+        content_bytes=raw,
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        extracted_text=extracted,
+        pseudonymized_text=pseudo,
+        entities=entities,
+    )
+    reconstructed = reconstruct(block)
+    assert reconstructed is not None
+    out_text = extract_docx(reconstructed)
+    assert (
+        out_text == "<<IBAN_1>> Kontakt: <<PERSON_1>>"
+        or out_text == "IBAN: <<IBAN_1>> Kontakt: <<PERSON_1>>"
+    )
+    assert "Anna Mueller" not in (out_text or "")
+    assert "DE89" not in (out_text or "")

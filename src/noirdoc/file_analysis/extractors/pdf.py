@@ -84,7 +84,7 @@ def extract_pdf_with_ocr_fallback(
     """
     import pypdfium2 as pdfium
 
-    from noirdoc.file_analysis.extractors.ocr import ocr_image
+    from noirdoc.file_analysis.extractors.ocr import _MAX_DIM, ocr_image
 
     pdf = pdfium.PdfDocument(data)
     pages: list[str] = []
@@ -99,7 +99,10 @@ def extract_pdf_with_ocr_fallback(
             textpage.close()
 
             if len(text.strip()) < min_chars_per_page:
-                pil = page.render(scale=render_scale).to_pil()
+                w, h = page.get_size()
+                max_side = max(float(w), float(h), 1.0)
+                effective_scale = min(float(render_scale), _MAX_DIM / max_side)
+                pil = page.render(scale=effective_scale).to_pil()
                 text = ocr_image(pil, lang=ocr_lang)
                 ocr_triggered += 1
 

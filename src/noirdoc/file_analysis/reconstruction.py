@@ -172,9 +172,13 @@ def _build_replacements(block: FileBlock) -> dict[str, str]:
     replacements: dict[str, str] = {}
     pseudo = block.pseudonymized_text
 
-    # Walk entities and find corresponding pseudonyms via offset tracking
+    # Walk entities and find corresponding pseudonyms via offset tracking.
+    # Use _without_overlaps so our entity list matches what PseudonymizationEngine
+    # actually emitted when block.entities contains overlapping spans.
+    from noirdoc.pseudonymization.engine import _without_overlaps
+
     offset_shift = 0
-    for entity in sorted(block.entities, key=lambda e: e.start):
+    for entity in _without_overlaps(block.extracted_text, block.entities):
         orig_text = entity.text
         # Find the pseudonym in the pseudonymized text at the shifted position
         pseudo_start = entity.start + offset_shift
