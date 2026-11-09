@@ -5,6 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-09
+
 ### Security
 - **Ensemble & Pseudonymization: overlapping entities of different types no longer corrupt placeholders or leak plaintext (#34, #35).** `EnsembleDetector._merge_entities` previously kept overlapping spans when their `entity_type` differed ("dual-type annotation"), and `PseudonymizationEngine.pseudonymize` replaced them back-to-front by original offsets, corrupting e.g. `IBAN: DE89 ...` into `<<LOCATION_1>>AN_1>>` or shifting outer replacements so the tail of an entity leaked in cleartext. Overlapping spans of any type now resolve into a single union span (`_pick_winner` sets the type; `PseudonymizationEngine` and `reconstruction._build_replacements` also merge overlaps for callers passing entity lists directly). `_validate_person` now runs before `_merge_entities` so a rejected longer span cannot swallow a valid shorter name, and `InvertedNameRecognizer` (`"Lastname, Firstname"`) is exempted from the comma filter. (Reported by @IBashniak in #34; fix co-authored with @niklasafink in #35.)
 - **Ensemble: raise `DetectionError` when all detectors fail (#36).** `EnsembleDetector.detect` previously caught every detector exception and returned `[]`, silently passing cleartext when every configured detector failed (or when `detectors=[]`). It now raises `DetectionError` (and supports `fail_closed=True` to raise on any single detector failure). `Redactor._ensure_detector` also loads per-call languages on demand so calling `Redactor(language="de").redact_text(..., language="en")` no longer fails in Presidio. (Co-authored with @niklasafink in #36.)
@@ -309,7 +311,8 @@ First public alpha on PyPI.
   a `UserWarning`, and keeps working. Explicit `--detector gliner` still fails
   loudly when the `[full]` extra isn't installed.
 
-[Unreleased]: https://github.com/noirdoc-ai/mask-engine/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/noirdoc-ai/mask-engine/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/noirdoc-ai/mask-engine/releases/tag/v0.2.1
 [0.2.0]: https://github.com/noirdoc-ai/mask-engine/releases/tag/v0.2.0
 [0.1.3]: https://github.com/noirdoc-ai/mask-engine/releases/tag/v0.1.3
 [0.1.2]: https://github.com/noirdoc-ai/mask-engine/releases/tag/v0.1.2
